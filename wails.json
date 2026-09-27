@@ -8,5 +8,11 @@
   "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "proof-of-fault contributors"
+  },
+  "info": {
+    "productName": "proof-of-fault",
+    "productVersion": "0.2.0",
+    "companyName": "proof-of-fault contributors",
+    "comments": "Beweissicherung bei Internetst\u00f6rungen"
   }
 }

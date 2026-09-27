@@ -15,7 +15,7 @@ var assets embed.FS
 func main() {
 	app := NewApp()
 	err := wails.Run(&options.App{
-		Title:            "proof-of-fault",
+		Title:            "proof-of-fault v" + Version,
 		Width:            1280,
 		Height:           860,
 		MinWidth:         900,

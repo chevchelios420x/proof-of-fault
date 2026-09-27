@@ -22,8 +22,9 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
       - name: Build
-        run: wails build -platform windows/amd64 -clean
+        shell: bash
+        run: scripts/build-windows.sh
       - uses: actions/upload-artifact@v4
         with:
           name: proof-of-fault-windows-amd64
-          path: build/bin/proof-of-fault.exe
+          path: build/bin/proof-of-fault-v*.exe

@@ -1,12 +1,13 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, GetVersion } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, seriesColor } from './zones.js'
 
   let tab = 'live'
+  let version = ''
   let target = localStorage.getItem('target') || '1.1.1.1'
   let status = { state: 'idle', reps: [], hops: [] }
   let stats = {}
@@ -47,6 +48,7 @@
   }
 
   onMount(async () => {
+    version = await GetVersion()
     status = await GetStatus()
     // Restore the remembered hop selection (backend keeps it only in memory).
     for (const a of loadWatched()) if (!(status.watched || []).includes(a)) await SetHopWatched(a, true)
@@ -111,7 +113,7 @@
 </script>
 
 <header>
-  <h1>proof-of-fault</h1>
+  <h1>proof-of-fault <span class="ver">{version}</span></h1>
   <nav>
     <button class:active={tab === 'live'} on:click={() => (tab = 'live')}>Messung</button>
     <button class:active={tab === 'history'} on:click={openHistory}>Verlauf &amp; Berichte</button>
@@ -280,6 +282,7 @@
 <style>
   header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: #1f2a44; color: #fff; }
   header h1 { font-size: 18px; margin: 0; }
+  .ver { font-size: 12px; font-weight: 400; color: #cfd6e6; margin-left: 6px; }
   nav button { background: transparent; color: #cfd6e6; border: none; }
   nav button.active { color: #fff; border-bottom: 2px solid #fff; border-radius: 0; }
   main { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
