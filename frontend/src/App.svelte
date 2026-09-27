@@ -133,6 +133,7 @@
   let liveIncidents = []
   let realLoss = {}
   let liveChart, histChart
+  let hoverKey = null // table row under the mouse → highlighted chart line
   let liveDiag = null
   let diagTimer = null
   function refreshDiag() {
@@ -304,7 +305,7 @@
 
       <section class="card">
         <h2>Latenzverlauf (live)<Help align="left" text={HELP.chart} /></h2>
-        <Chart zones={zoneDefs} bind:this={liveChart} bind:windowMin={liveWindow} theme={themeTick} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
+        <Chart highlight={hoverKey} zones={zoneDefs} bind:this={liveChart} bind:windowMin={liveWindow} theme={themeTick} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
       </section>
 
       <div class="two">
@@ -321,7 +322,7 @@
           <table class="route">
             <tr><th>TTL<Help align="left" text={HELP.ttl} /></th><th>Adresse<Help text={HELP.addr} /></th><th>Name<Help text={HELP.name} /></th><th>Zone<Help text={HELP.zone} /></th><th>RTT<Help text={HELP.rtt} /></th><th>Diagramm<Help align="right" text={HELP.diagram} /></th></tr>
             {#each status.hops || [] as h}
-              <tr>
+              <tr on:mouseenter={() => h.responsive && (hoverKey = rowKey(h))} on:mouseleave={() => (hoverKey = null)}>
                 <td>{h.ttl}</td>
                 <td>{h.responsive ? h.addr : '* (filtert ICMP – kein Fehler)'}</td>
                 <td>
@@ -364,7 +365,7 @@
               <th class="c">Ping<Help text={HELP.pingSwitch} /></th><th class="c">TCP-Check<Help text={HELP.tcp} /></th><th></th>
             </tr>
             {#each custom as c (c.host)}
-              <tr class:inactive={!c.enabled && !c.tcp}>
+              <tr class:inactive={!c.enabled && !c.tcp} on:mouseenter={() => (hoverKey = c.enabled ? devKey(c.host) : 'tcp:' + c.host)} on:mouseleave={() => (hoverKey = null)}>
                 <td>{c.host}{#if c.ip && c.ip !== c.host}<br /><small class="muted">{c.ip}</small>{/if}{#if c.error}<br /><small class="bad">{c.error}</small>{/if}</td>
                 <td><input class="name" value={c.name} placeholder="optional" on:change={(e) => saveCustom(c, { name: e.target.value })}
                   on:keydown={(e) => e.key === 'Enter' && e.target.blur()} /></td>
@@ -380,7 +381,7 @@
                     <span class="dot" style="background:{colors[devKey(c.host)]}"></span>
                   </label>
                 </td>
-                <td class="c nowrap">
+                <td class="c nowrap" on:mouseenter={() => c.tcp && (hoverKey = 'tcp:' + c.host)} on:mouseleave={() => (hoverKey = c.enabled ? devKey(c.host) : null)}>
                   <label class="switch" title="TCP-Check an/aus"><input type="checkbox" checked={c.tcp} on:change={(e) => saveCustom(c, { tcp: e.target.checked })} /><span></span></label>
                   <input class="port" type="number" min="1" max="65535" value={c.port || 443} disabled={!c.tcp} on:change={(e) => saveCustom(c, { port: e.target.value })} title="Port" />
                   <label class="toggle" class:off={!c.tcp} title="Linie im Diagramm anzeigen">

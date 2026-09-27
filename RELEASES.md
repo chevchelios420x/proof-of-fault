@@ -6,6 +6,19 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.14.0 – 2026-09-27
+
+- Live-Diagramm, Legende nach Zonen:
+  - **Klick auf einen Gruppennamen** blendet die ganze Gruppe ein/aus
+    (durchgestrichen = alle aus).
+  - **◉ je Gruppe** hebt die Gruppe hervor: ihre Linien bleiben kräftig, alle
+    anderen werden stark abgeblendet (nochmal klicken zum Aufheben).
+    Überfahren des Gruppennamens zeigt das als Vorschau.
+  - **Überfahren eines Legenden-Eintrags** hebt genau diese Linie hervor.
+- **Überfahren einer Zeile in der Route-Tabelle oder bei den manuellen
+  Messpunkten** hebt die zugehörige Linie im Live-Diagramm hervor (in der
+  TCP-Spalte die TCP-Linie).
+
 ## v0.13.0 – 2026-09-27
 
 - **Vorgeschlagene Ausweichziele**: 1.1.1.1 (Cloudflare), 9.9.9.9 (Quad9) und

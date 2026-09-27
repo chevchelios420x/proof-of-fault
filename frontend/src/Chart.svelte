@@ -109,7 +109,9 @@
         {},
         ...series.map((s) => ({
           label: s.label,
-          stroke: s.color,
+          // Function: evaluated on every redraw, so highlighting a group
+          // needs no rebuild.
+          stroke: () => (dimmed(s) ? fade(s.color) : s.color),
           width: s.dash ? 1.4 : 1.6,
           dash: s.dot ? [2, 3] : s.dash ? [6, 3] : undefined,
           show: !hidden.has(s.key),
@@ -172,6 +174,36 @@
   $: if (scaleMode !== lastScale) { lastScale = scaleMode; if (plot) build() }
   $: if (plot && bands) plot.redraw(false)
 
+  // Group highlighting: the focused group keeps its colors, all other lines
+  // are dimmed. Hovering a group name previews it.
+  let focusGroup = null
+  let hoverGroup = null
+  let hoverKey = null
+  export let highlight = null // series key highlighted from outside (table row hover)
+  $: activeFocus = hoverGroup || focusGroup
+  $: activeKey = hoverKey || highlight
+  // A single highlighted line wins over group highlighting.
+  function dimmed(s) {
+    if (activeKey) return s.key !== activeKey
+    return !!activeFocus && (s.group || 'none') !== activeFocus
+  }
+  $: if (plot && (activeFocus !== undefined || activeKey !== undefined)) plot.redraw(false)
+  function fade(hex) {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '')
+    if (!m) return 'rgba(128,128,128,0.12)'
+    return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},0.12)`
+  }
+
+  // Clicking a group name shows or hides the whole group: if any line of
+  // it is visible, all are hidden, otherwise all are shown.
+  function toggleGroup(grp) {
+    const anyVisible = grp.items.some((s) => !hidden.has(s.key))
+    for (const s of grp.items) {
+      if (hidden.has(s.key) === anyVisible) continue // already in the target state
+      onToggle(s.key, !anyVisible)
+    }
+  }
+
   function enter() { paused = true }
   function leave() { paused = false; refresh() }
   function resetZoom() { zoomed = false; refresh() }
@@ -221,10 +253,19 @@
 
 <div class="legend">
   {#each groups as grp}
-    <div class="group">
-      <div class="gname" style="border-bottom-color:{grp.zone.color}">{grp.zone.name}</div>
+    <div class="group" class:focused={focusGroup === grp.zone.id} class:dimmed={activeFocus && activeFocus !== grp.zone.id}>
+      <div class="gname" style="border-bottom-color:{grp.zone.color}">
+        <button class="gtoggle" class:alloff={grp.items.every((s) => hidden.has(s.key))}
+          title="Klicken: ganze Gruppe im Diagramm ein-/ausblenden"
+          on:click={() => toggleGroup(grp)}
+          on:mouseenter={() => (hoverGroup = grp.zone.id)} on:mouseleave={() => (hoverGroup = null)}>{grp.zone.name}</button>
+        <button class="focus" class:on={focusGroup === grp.zone.id}
+          title="Gruppe hervorheben: alle anderen Linien werden abgeblendet (nochmal klicken zum Aufheben)"
+          on:click={() => (focusGroup = focusGroup === grp.zone.id ? null : grp.zone.id)}>◉</button>
+      </div>
       {#each grp.items as s}
-        <button class="item" class:off={hidden.has(s.key)} on:click={() => toggle(s.key)} title="Klicken zum Ein-/Ausblenden">
+        <button class="item" class:off={hidden.has(s.key)} class:hl={activeKey === s.key} on:click={() => toggle(s.key)} title="Klicken zum Ein-/Ausblenden"
+          on:mouseenter={() => (hoverKey = s.key)} on:mouseleave={() => (hoverKey = null)} on:focus={() => (hoverKey = s.key)} on:blur={() => (hoverKey = null)}>
           <svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke={s.color} stroke-width="3" stroke-dasharray={s.dot ? '2 3' : s.dash ? '6 3' : ''} /></svg>
           <span class="lbl">{s.label}</span>
           <span class="val" class:lost={cursorVals[s.key] === null}>{cursorT ? fmtV(cursorVals[s.key]) : ''}</span>
@@ -236,7 +277,7 @@
 
 <p class="hint">
   {#if live && paused}<b class="paused">⏸ Angehalten, solange die Maus über dem Diagramm ist.</b>{/if}
-  Ziehen = Zoom, Doppelklick = zurücksetzen. Farbige Flächen = Störungen (rot: Anbieter/Internet, blau: nur Ziel/Ausweichziel, grün: Heimnetz/Einzelgerät).
+  Klick auf einen Gruppennamen = ganze Gruppe ein-/ausblenden, ◉ = Gruppe hervorheben. Ziehen = Zoom, Doppelklick = zurücksetzen. Farbige Flächen = Störungen (rot: Anbieter/Internet, blau: nur Ziel/Ausweichziel, grün: Heimnetz/Einzelgerät).
   Rote Striche oben = Paketverlust, je sichtbarer Linie eine Spur (Farbmarke links). Gestrichelt = manuelle Messpunkte (Ping), gepunktet = TCP-Check.
 </p>
 
@@ -249,8 +290,17 @@
   .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 6px; }
   .group { display: flex; flex-direction: column; gap: 2px; min-width: 200px; }
   .gname { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 2px solid var(--border); padding-bottom: 2px; }
+  .gname { display: flex; align-items: center; gap: 6px; }
+  .gtoggle { border: none; background: none; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; text-align: left; }
+  .gtoggle:hover { color: var(--fg); text-decoration: underline; }
+  .gtoggle.alloff { opacity: 0.45; text-decoration: line-through; }
+  .focus { border: 1px solid var(--border); background: none; padding: 0 5px; font-size: 11px; line-height: 16px; border-radius: 8px; color: var(--muted); margin-left: auto; }
+  .focus.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .group.focused .gname { color: var(--fg); }
+  .group.dimmed { opacity: 0.45; }
   .item { display: flex; align-items: center; gap: 6px; border: none; background: none; padding: 1px 0; font-size: 13px; text-align: left; }
   .item.off { opacity: 0.35; }
+  .item.hl { font-weight: 600; background: var(--sel-bg); border-radius: 4px; }
   .item .val { margin-left: auto; padding-left: 10px; font-variant-numeric: tabular-nums; color: var(--muted); }
   .item .val.lost { color: #d62828; font-weight: 600; }
   .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
