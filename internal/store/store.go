@@ -44,6 +44,22 @@ CREATE TABLE IF NOT EXISTS hop_pref (
 	name    TEXT NOT NULL DEFAULT '', -- optional user label
 	watched INTEGER NOT NULL DEFAULT 0 -- own line in the live chart
 );
+CREATE TABLE IF NOT EXISTS event (
+	id         INTEGER PRIMARY KEY,
+	session_id INTEGER NOT NULL,
+	ts_ns      INTEGER NOT NULL,
+	end_ns     INTEGER NOT NULL DEFAULT 0,
+	kind       TEXT NOT NULL,     -- session | path | path_change | zones | loss | loss_hop | spike | outage_start | outage_end
+	severity   TEXT NOT NULL,     -- info | ok | warn | crit
+	zone       TEXT NOT NULL DEFAULT '',
+	ttl        INTEGER NOT NULL DEFAULT 0,
+	addr       TEXT NOT NULL DEFAULT '',
+	title      TEXT NOT NULL,
+	detail     TEXT NOT NULL DEFAULT '',
+	count      INTEGER NOT NULL DEFAULT 0,
+	value_ms   REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS event_idx ON event(session_id, ts_ns);
 CREATE TABLE IF NOT EXISTS outage (
 	session_id INTEGER NOT NULL,
 	zone       TEXT NOT NULL,     -- zone the fault is attributed to
@@ -398,4 +414,52 @@ func (s *Store) SetHopName(addr, name string) error {
 func (s *Store) SetHopWatched(addr string, on bool) error {
 	_, err := s.db.Exec(`INSERT INTO hop_pref(addr, watched) VALUES(?,?) ON CONFLICT(addr) DO UPDATE SET watched=excluded.watched`, addr, on)
 	return err
+}
+
+// Event is one entry of the session's event log.
+type Event struct {
+	ID       int64   `json:"id"`
+	T        int64   `json:"t"`   // unix ms
+	End      int64   `json:"end"` // unix ms, 0 = point in time
+	Kind     string  `json:"kind"`
+	Severity string  `json:"severity"`
+	Zone     string  `json:"zone"` // zone the event is attributed to
+	TTL      int     `json:"ttl"`  // hop from which on the event was observed
+	Addr     string  `json:"addr"`
+	Title    string  `json:"title"`
+	Detail   string  `json:"detail"`
+	Count    int     `json:"count"`   // affected seconds / probes
+	ValueMs  float64 `json:"valueMs"` // e.g. peak RTT of a spike
+}
+
+// AddEvent stores an event and returns it with its ID.
+func (s *Store) AddEvent(sid int64, e Event) (Event, error) {
+	r, err := s.db.Exec(`INSERT INTO event(session_id, ts_ns, end_ns, kind, severity, zone, ttl, addr, title, detail, count, value_ms)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, sid, e.T*1e6, e.End*1e6, e.Kind, e.Severity, e.Zone, e.TTL, e.Addr, e.Title, e.Detail, e.Count, e.ValueMs)
+	if err != nil {
+		return e, err
+	}
+	e.ID, _ = r.LastInsertId()
+	return e, nil
+}
+
+// Events returns the event log of a session in time order.
+func (s *Store) Events(sid int64) ([]Event, error) {
+	rows, err := s.db.Query(`SELECT id, ts_ns, end_ns, kind, severity, zone, ttl, addr, title, detail, count, value_ms
+		FROM event WHERE session_id=? ORDER BY ts_ns, id`, sid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var t, end int64
+		if err := rows.Scan(&e.ID, &t, &end, &e.Kind, &e.Severity, &e.Zone, &e.TTL, &e.Addr, &e.Title, &e.Detail, &e.Count, &e.ValueMs); err != nil {
+			return nil, err
+		}
+		e.T, e.End = t/1e6, end/1e6
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

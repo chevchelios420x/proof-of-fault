@@ -94,9 +94,10 @@ var funcs = template.FuncMap{
 		}
 		return time.UnixMilli(ms).Format("02.01.2006 15:04:05")
 	},
-	"dur": func(sec float64) string { return (time.Duration(sec) * time.Second).Round(time.Second).String() },
-	"f1":  func(v float64) string { return fmt.Sprintf("%.1f", v) },
-	"f2":  func(v float64) string { return fmt.Sprintf("%.2f", v) },
+	"dur":  func(sec float64) string { return (time.Duration(sec) * time.Second).Round(time.Second).String() },
+	"f1":   func(v float64) string { return fmt.Sprintf("%.1f", v) },
+	"kind": kindText,
+	"f2":   func(v float64) string { return fmt.Sprintf("%.2f", v) },
 }
 
 var htmlTpl = template.Must(template.New("r").Funcs(funcs).Parse(`<!doctype html>
@@ -107,7 +108,10 @@ table{border-collapse:collapse;margin:8px 0 20px;width:100%}
 th,td{border:1px solid #ccc;padding:4px 8px;text-align:right;font-size:13px}
 th:first-child,td:first-child{text-align:left}
 th{background:#f1f1f1}
-.verdict{background:#fff4e5;border-left:4px solid #e76f51;padding:10px 14px}
+.verdict{background:#fff4e5;border-left:6px solid #e76f51;padding:10px 16px}
+.lvl-none{background:#eef8f1;border-color:#2a9d8f}.lvl-lan{border-color:#2a9d8f}.lvl-wan{border-color:#3a5a8c}
+.log td{text-align:left;vertical-align:top}.log td:nth-child(1),.log td:nth-child(2){white-space:nowrap}
+.sev-crit{background:#fde2e2}.sev-warn{background:#fff6e0}.sev-info td{color:#666}.sev-ok{background:#e9f7ef}
 .chart{width:100%;height:auto;border:1px solid #eee}
 small{color:#666}
 @media print{body{margin:0}.chart{page-break-inside:avoid}}
@@ -115,7 +119,13 @@ small{color:#666}
 <h1>Messprotokoll Internetverbindung</h1>
 <p><b>Ziel:</b> {{.R.Session.Target}} ({{.R.Session.TargetIP}}) &nbsp; <b>Messung:</b> {{ts .R.Session.StartedAt}} – {{ts .R.Session.EndedAt}} ({{dur .R.DurationSec}})<br>
 <b>Messrechner:</b> <small>{{.R.Session.HostInfo}}</small> &nbsp; <b>Erstellt:</b> {{ts .R.GeneratedAt}}</p>
-<p class="verdict"><b>Ergebnis:</b> {{.R.Verdict}}</p>
+<div class="verdict lvl-{{.R.Diagnosis.Level}}">
+<h2 style="margin-top:0">Diagnose: {{.R.Diagnosis.Headline}}</h2>
+<p><b>Sicherheit der Einschätzung:</b> {{.R.Diagnosis.Confidence}}</p>
+<ul>{{range .R.Diagnosis.Explanation}}<li>{{.}}</li>{{end}}</ul>
+<p><b>Empfehlung:</b></p>
+<ul>{{range .R.Diagnosis.Advice}}<li>{{.}}</li>{{end}}</ul>
+</div>
 
 <h2>Kennzahlen je Zone</h2>
 <table><tr><th>Zone</th><th>Probes</th><th>Verlust %</th><th>Min</th><th>Ø</th><th>P50</th><th>P95</th><th>P99</th><th>Max</th><th>Jitter (RFC 3550)</th><th>&gt;100 ms</th><th>Ausfallzeit</th></tr>
@@ -127,6 +137,12 @@ small{color:#666}
 {{if .R.Outages}}<table><tr><th>Zone (Ursache)</th><th>Beginn</th><th>Ende</th><th>Dauer (s)</th></tr>
 {{range .R.Outages}}<tr><td>{{.Zone}}</td><td>{{ts .Start}}</td><td>{{ts .End}}</td><td>{{f1 .Seconds}}</td></tr>{{end}}</table>
 {{else}}<p>Keine.</p>{{end}}
+
+<h2>Ereignisprotokoll</h2>
+<small>Jede Messsekunde wird über alle Messpunkte gemeinsam ausgewertet: Ein Verlust oder eine Latenzspitze wird dem ersten Hop zugeordnet, ab dem alle weiteren Messpunkte bis zum Ziel betroffen waren. Verluste nur an einem Zwischen-Hop (das Ziel antwortete) sind als harmlos markiert.</small>
+<table class="log"><tr><th>Beginn</th><th>Ende</th><th>Art</th><th>Zone</th><th>Ereignis</th><th>Details</th></tr>
+{{range .R.Events}}<tr class="sev-{{.Severity}}"><td>{{ts .T}}</td><td>{{if .End}}{{ts .End}}{{end}}</td><td>{{kind .Kind}}</td><td>{{.Zone}}</td><td>{{.Title}}</td><td>{{.Detail}}</td></tr>
+{{end}}</table>
 
 <h2>Latenzverlauf</h2>
 <small>Linie = Latenz (Maximum je Zeitabschnitt), rote Striche = Paketverlust.</small>
@@ -149,4 +165,42 @@ func WriteHTML(w io.Writer, r Report, series []Series) error {
 		R     Report
 		Chart template.HTML
 	}{r, chartSVG(series)})
+}
+
+func kindText(k string) string {
+	switch k {
+	case "session":
+		return "Messung"
+	case "path", "path_change":
+		return "Route"
+	case "zones":
+		return "Zonen"
+	case "loss":
+		return "Verlust"
+	case "loss_hop":
+		return "Verlust (harmlos)"
+	case "spike":
+		return "Latenzspitze"
+	case "outage_start":
+		return "Ausfall"
+	case "outage_end":
+		return "Ausfall Ende"
+	}
+	return k
+}
+
+// WriteEventsCSV writes the event log (semicolon separated).
+func WriteEventsCSV(w io.Writer, events []store.Event) error {
+	bw := bufio.NewWriter(w)
+	bw.WriteString("beginn;ende;art;schwere;zone;ttl;adresse;ereignis;details;sekunden;wert_ms\n")
+	clean := func(s string) string { return strings.NewReplacer(";", ",", "\n", " ").Replace(s) }
+	for _, e := range events {
+		end := ""
+		if e.End > 0 {
+			end = time.UnixMilli(e.End).Format(time.RFC3339)
+		}
+		fmt.Fprintf(bw, "%s;%s;%s;%s;%s;%d;%s;%s;%s;%d;%.1f\n", time.UnixMilli(e.T).Format(time.RFC3339), end,
+			kindText(e.Kind), e.Severity, e.Zone, e.TTL, e.Addr, clean(e.Title), clean(e.Detail), e.Count, e.ValueMs)
+	}
+	return bw.Flush()
 }

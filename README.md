@@ -18,7 +18,7 @@ Status: **Windows** (IPv4). Linux/macOS folgen (siehe `internal/probe`).
 
 ## Benutzung (Windows)
 
-Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.3.0.exe`](build/bin/proof-of-fault-v0.3.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
+Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.4.0.exe`](build/bin/proof-of-fault-v0.4.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
 
 1. `proof-of-fault.exe` starten. Es sind keine Admin-Rechte und keine Installation
    nötig; die WebView2-Runtime ist bei Windows 10/11 vorhanden.
@@ -33,6 +33,14 @@ Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.3.0.exe`](bui
 5. **Verlauf & Berichte** → Sitzung wählen → **Bericht (HTML/PDF)** oder
    **Rohdaten (CSV)**. Den HTML-Bericht im Browser öffnen und mit „Drucken → Als PDF
    speichern“ in eine PDF umwandeln.
+
+**Ereignisprotokoll und Diagnose:** Jede Messsekunde wird über alle Messpunkte
+gemeinsam ausgewertet. Paketverluste und Latenzspitzen werden mit Zeit, Dauer und
+dem Hop protokolliert, ab dem sie bis zum Ziel auftreten; Verluste nur an einem
+Zwischen-Hop gelten als harmlos. Routenwechsel werden mit der genauen Änderung
+geloggt. Daraus erstellt die App eine verständliche Diagnose („Das Problem liegt
+sehr wahrscheinlich beim Internetanbieter …“) mit Empfehlungen – live, im Verlauf
+und im HTML-Bericht.
 
 Tipps für belastbare Nachweise: Den PC **per LAN-Kabel** anschließen (sonst sieht der
 Provider WLAN als Ursache). Mehrere Stunden bis Tage messen und den Energiesparmodus

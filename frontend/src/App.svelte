@@ -1,8 +1,10 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
+  import EventLog from './EventLog.svelte'
+  import Diagnosis from './Diagnosis.svelte'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, hopColor, buildSeries } from './zones.js'
 
@@ -65,6 +67,22 @@
 
   let histHidden = new Set()
 
+  // Event log and diagnosis of the running session.
+  let liveEvents = []
+  let liveDiag = null
+  let diagTimer = null
+  function refreshDiag() {
+    clearTimeout(diagTimer)
+    diagTimer = setTimeout(async () => {
+      if (!status.sessionId) return
+      try {
+        const x = await GetLive(status.sessionId)
+        liveDiag = x.diagnosis
+        liveEvents = x.events || []
+      } catch {}
+    }, 1500)
+  }
+
   async function changeZone(addr, zone) {
     try { await SetHopZone(addr, zone === 'auto' ? '' : zone) } catch (e) { error = String(e) }
   }
@@ -82,6 +100,11 @@
       liveVersion++
     })
     EventsOn('stats', (s) => (stats = s))
+    EventsOn('event', (e) => {
+      liveEvents = [...liveEvents, e]
+      refreshDiag()
+    })
+    if (status.sessionId) refreshDiag()
     EventsOn('outage', (o) => {
       if (o.active) {
         activeOutage = o
@@ -99,7 +122,7 @@
     error = ''
     localStorage.setItem('target', target)
     live.reset(); liveVersion++
-    stats = {}; outages = []; activeOutage = null
+    stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null
     startedAt = Date.now()
     try { await StartMonitoring(target.trim()) } catch (e) { error = String(e) }
   }
@@ -192,6 +215,8 @@
         {/each}
       </section>
 
+      {#if liveDiag}<Diagnosis d={liveDiag} live={running} />{/if}
+
       <section class="card">
         <h2>Latenzverlauf (live)</h2>
         <Chart live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
@@ -199,15 +224,8 @@
 
       <div class="two">
         <section class="card">
-          <h2>Ausfälle dieser Sitzung</h2>
-          {#if outages.length}
-            <table>
-              <tr><th>Zone</th><th>Beginn</th><th>Ende</th><th>Dauer</th></tr>
-              {#each outages as o}
-                <tr><td>{o.zone}</td><td>{fmtTime(o.start)}</td><td>{fmtTime(o.end)}</td><td>{fmtDur(((o.end || now) - o.start) / 1000)}</td></tr>
-              {/each}
-            </table>
-          {:else}<p class="muted">Bisher keine.</p>{/if}
+          <h2>Ereignisprotokoll</h2>
+          <EventLog events={liveEvents} />
         </section>
         <section class="card">
           <h2>Route</h2>
@@ -270,10 +288,11 @@
               <span>
                 <button on:click={() => doExport('html')}>Bericht (HTML/PDF)</button>
                 <button on:click={() => doExport('csv')}>Rohdaten (CSV)</button>
+                <button on:click={() => doExport('events')}>Ereignisse (CSV)</button>
               </span>
             </div>
             <p>{fmtTime(r.session.startedAt)} – {fmtTime(r.session.endedAt)} · Dauer {fmtDur(r.durationSec)} · {r.pathChanges} Routenwechsel</p>
-            <p class="verdict">{r.verdict}</p>
+            <Diagnosis d={r.diagnosis} />
             {#if exportMsg}<p class="muted">{exportMsg}</p>{/if}
           </section>
           <section class="card">
@@ -294,13 +313,8 @@
               hidden={histHidden} onToggle={(k, show) => { show ? histHidden.delete(k) : histHidden.add(k); histHidden = new Set(histHidden) }} version={histVersion} />
           </section>
           <section class="card">
-            <h2>Ausfälle</h2>
-            {#if r.outages?.length}
-              <table>
-                <tr><th>Zone</th><th>Beginn</th><th>Ende</th><th>Dauer</th></tr>
-                {#each r.outages as o}<tr><td>{o.zone}</td><td>{fmtTime(o.start)}</td><td>{fmtTime(o.end)}</td><td>{fmtDur(o.seconds)}</td></tr>{/each}
-              </table>
-            {:else}<p class="muted">Keine.</p>{/if}
+            <h2>Ereignisprotokoll</h2>
+            <EventLog events={r.events || []} />
           </section>
         </div>
       {/if}
@@ -329,7 +343,7 @@
   .zone .big small { font-size: 12px; font-weight: 400; color: var(--muted); }
   .bad { color: var(--bad); font-weight: 600; }
   .muted { color: var(--muted); }
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .two { display: grid; grid-template-columns: 1fr; gap: 14px; }
   .history { display: grid; grid-template-columns: 240px 1fr; gap: 14px; align-items: start; }
   .session { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
   .session.active { border-color: var(--accent); background: #eef2fa; }
@@ -340,5 +354,4 @@
   .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .small { font-size: 12px; margin: 6px 0 0; }
-  .verdict { background: #fff4e5; border-left: 4px solid var(--isp); padding: 8px 12px; margin: 8px 0 0; }
 </style>

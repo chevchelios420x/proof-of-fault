@@ -1,0 +1,203 @@
+package report
+
+import (
+	"fmt"
+	"sort"
+
+	"github.com/chevchelios420x/proof-of-fault/internal/path"
+	"github.com/chevchelios420x/proof-of-fault/internal/store"
+)
+
+// ZoneFindings sums up the relevant events attributed to one zone.
+type ZoneFindings struct {
+	Zone          path.Zone `json:"zone"`
+	LossEvents    int       `json:"lossEvents"`
+	LostSeconds   int       `json:"lostSeconds"`
+	SpikeEvents   int       `json:"spikeEvents"`
+	SpikeSeconds  int       `json:"spikeSeconds"`
+	Outages       int       `json:"outages"`
+	OutageSeconds int       `json:"outageSeconds"`
+	Score         float64   `json:"score"`
+}
+
+// Diagnosis is the plain-language conclusion for non-experts.
+type Diagnosis struct {
+	Level        string         `json:"level"` // none | lan | isp | wan | unclear
+	Headline     string         `json:"headline"`
+	Confidence   string         `json:"confidence"` // hoch | mittel | gering
+	Explanation  []string       `json:"explanation"`
+	Advice       []string       `json:"advice"`
+	Zones        []ZoneFindings `json:"zones"`
+	Harmless     int            `json:"harmless"`
+	RouteChanges int            `json:"routeChanges"`
+	TopOrigin    string         `json:"topOrigin"` // most frequent hop where problems start
+}
+
+// Diagnose derives the diagnosis from the event log.
+func Diagnose(events []store.Event) Diagnosis {
+	byZone := map[path.Zone]*ZoneFindings{}
+	for _, z := range path.Zones {
+		byZone[z] = &ZoneFindings{Zone: z}
+	}
+	d := Diagnosis{}
+	origins := map[string]int{}
+	originLabel := map[string]string{}
+	for _, e := range events {
+		f := byZone[path.Zone(e.Zone)]
+		switch e.Kind {
+		case "loss_hop":
+			d.Harmless++
+			continue
+		case "path_change":
+			d.RouteChanges++
+			continue
+		}
+		if f == nil {
+			continue
+		}
+		switch e.Kind {
+		case "loss":
+			f.LossEvents++
+			f.LostSeconds += e.Count
+		case "spike":
+			f.SpikeEvents++
+			f.SpikeSeconds += e.Count
+		case "outage_start":
+			f.Outages++
+		case "outage_end":
+			f.OutageSeconds += e.Count
+		default:
+			continue
+		}
+		if e.Addr != "" && (e.Kind == "loss" || e.Kind == "spike" || e.Kind == "outage_start") {
+			origins[e.Addr]++
+			if e.TTL > 0 {
+				originLabel[e.Addr] = fmt.Sprintf("Hop %d (%s, Zone %s)", e.TTL, e.Addr, e.Zone)
+			} else {
+				originLabel[e.Addr] = fmt.Sprintf("dem Ziel %s", e.Addr)
+			}
+		}
+	}
+
+	var total float64
+	for _, z := range path.Zones {
+		f := byZone[z]
+		// Outages weigh fully, lost seconds fully, spikes less (they hurt,
+		// but are no interruption).
+		f.Score = float64(f.OutageSeconds) + float64(f.LostSeconds) + 0.3*float64(f.SpikeSeconds)
+		total += f.Score
+		d.Zones = append(d.Zones, *f)
+	}
+	best := 0
+	for i, f := range d.Zones {
+		if f.Score > d.Zones[best].Score {
+			best = i
+		}
+	}
+	if len(origins) > 0 {
+		keys := make([]string, 0, len(origins))
+		for k := range origins {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool { return origins[keys[i]] > origins[keys[j]] })
+		d.TopOrigin = originLabel[keys[0]]
+	}
+
+	events_ := 0
+	for _, f := range d.Zones {
+		events_ += f.LossEvents + f.SpikeEvents + f.Outages
+	}
+	if total == 0 {
+		d.Level, d.Confidence = "none", "hoch"
+		d.Headline = "Keine Störungen festgestellt."
+		d.Explanation = []string{"Während der Messung gab es weder Paketverluste noch auffällige Latenzspitzen auf dem Weg zum Ziel."}
+		if d.Harmless > 0 {
+			d.Explanation = append(d.Explanation, fmt.Sprintf("%d harmlose Einzelverluste an Zwischen-Hops (ICMP-Drosselung) wurden ignoriert – sie beeinträchtigen die Verbindung nicht.", d.Harmless))
+		}
+		d.Advice = []string{"Messung länger laufen lassen, bis die Störung wieder auftritt – das Protokoll hält dann genau fest, wo sie beginnt."}
+		return d
+	}
+
+	top := d.Zones[best]
+	share := top.Score / total
+	switch {
+	case share >= 0.75 && events_ >= 3:
+		d.Confidence = "hoch"
+	case share >= 0.5:
+		d.Confidence = "mittel"
+	default:
+		d.Confidence = "gering"
+	}
+	if share < 0.5 {
+		d.Level = "unclear"
+		d.Headline = "Störungen in mehreren Bereichen – keine eindeutige Ursache."
+	} else {
+		switch top.Zone {
+		case path.LAN:
+			d.Level = "lan"
+			d.Headline = "Das Problem liegt sehr wahrscheinlich in Ihrem eigenen Heimnetz (Router, WLAN oder Kabel)."
+		case path.ISPEdge:
+			d.Level = "isp"
+			d.Headline = "Das Problem liegt sehr wahrscheinlich beim Internetanbieter (Ihr Anschluss bzw. das Netz des Anbieters)."
+		case path.WAN:
+			d.Level = "wan"
+			d.Headline = "Ihr Anschluss arbeitet sauber – die Störungen entstehen weiter hinten im Internet (Zielserver oder Übergänge zu anderen Netzen)."
+		}
+	}
+
+	for _, f := range d.Zones {
+		if f.Score == 0 {
+			d.Explanation = append(d.Explanation, fmt.Sprintf("%s: keine Auffälligkeiten.", zoneName(f.Zone)))
+			continue
+		}
+		d.Explanation = append(d.Explanation, fmt.Sprintf("%s: %d Verlust-Ereignis(se) mit %d s Verlust, %d Latenzspitze(n) mit %d s, %d Ausfall/Ausfälle mit %d s Dauer.",
+			zoneName(f.Zone), f.LossEvents, f.LostSeconds, f.SpikeEvents, f.SpikeSeconds, f.Outages, f.OutageSeconds))
+	}
+	if d.TopOrigin != "" {
+		d.Explanation = append(d.Explanation, "Die Störungen beginnen am häufigsten ab "+d.TopOrigin+": Davor war die Verbindung jeweils in Ordnung, ab dort bis zum Ziel nicht.")
+	}
+	if d.Harmless > 0 {
+		d.Explanation = append(d.Explanation, fmt.Sprintf("%d Einzelverluste an Zwischen-Hops wurden als harmlos erkannt (ICMP-Drosselung, das Ziel antwortete) und nicht gewertet.", d.Harmless))
+	}
+	if d.RouteChanges > 0 {
+		d.Explanation = append(d.Explanation, fmt.Sprintf("Die Route hat sich %d-mal geändert (Details im Ereignisprotokoll). Häufige Routenwechsel können auf Instabilität im Anbieter-Netz hindeuten.", d.RouteChanges))
+	}
+
+	switch d.Level {
+	case "lan":
+		d.Advice = []string{
+			"Den PC per LAN-Kabel direkt am Router anschließen und erneut messen (WLAN ist die häufigste Ursache).",
+			"Router neu starten, Kabel und Netzteil prüfen; bei Verstärkern/Mesh: direkt am Hauptrouter messen.",
+			"Der Internetanbieter ist für diesen Bereich nicht verantwortlich.",
+		}
+	case "isp":
+		d.Advice = []string{
+			"Störung beim Internetanbieter melden und den HTML-Bericht (oder als PDF gedruckt) mitschicken.",
+			"Konkrete Zeitpunkte aus dem Ereignisprotokoll nennen und darauf hinweisen, dass der eigene Router zu diesen Zeiten erreichbar war.",
+			"Für einen belastbaren Nachweis per LAN-Kabel messen und die Messung über mehrere Tage laufen lassen.",
+		}
+	case "wan":
+		d.Advice = []string{
+			"Zum Vergleich ein anderes Ziel messen (z. B. 1.1.1.1 und 8.8.8.8). Ist nur ein Ziel betroffen, liegt es am Zielbetreiber.",
+			"Sind alle Ziele betroffen, kann es an den Übergängen des Anbieters ins Internet liegen (Peering) – dann ebenfalls den Anbieter informieren.",
+		}
+	default:
+		d.Advice = []string{
+			"Messung länger laufen lassen, damit sich ein Muster ergibt.",
+			"Per LAN-Kabel messen, um das WLAN als Ursache auszuschließen.",
+		}
+	}
+	return d
+}
+
+func zoneName(z path.Zone) string {
+	switch z {
+	case path.LAN:
+		return "Heimnetz (LAN)"
+	case path.ISPEdge:
+		return "Anschluss/Anbieter (ISP_EDGE)"
+	case path.WAN:
+		return "Internet/Ziel (WAN)"
+	}
+	return string(z)
+}

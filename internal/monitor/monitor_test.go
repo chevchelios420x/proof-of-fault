@@ -57,3 +57,43 @@ func TestOutageAttribution(t *testing.T) {
 		}
 	}
 }
+
+func TestTickEvents(t *testing.T) {
+	r := newTestRunner(t)
+	order := []series{
+		{key: "LAN", ttl: 1, zone: path.LAN, label: "Hop 1"},
+		{key: "hop:88.1.1.1", ttl: 2, zone: path.ISPEdge, label: "Hop 2"},
+		{key: "ISP_EDGE", ttl: 3, zone: path.ISPEdge, label: "Hop 3"},
+		{key: "WAN", ttl: targetTTL, zone: path.WAN, label: "Ziel"},
+	}
+	ms := time.Millisecond
+	seq := 0
+	run := func(lan, hop, isp, wan time.Duration) {
+		seq++
+		r.seq = seq
+		r.finishTick(&tick{seq: seq, at: time.Now(), order: order, result: map[string]time.Duration{
+			"LAN": lan, "hop:88.1.1.1": hop, "ISP_EDGE": isp, "WAN": wan}})
+	}
+	for i := 0; i < 20; i++ { // baseline
+		run(2*ms, 8*ms, 10*ms, 20*ms)
+	}
+	run(2*ms, -1, 10*ms, 20*ms)    // harmless hop loss
+	run(2*ms, 8*ms, -1, -1)        // real loss from hop 3
+	run(2*ms, 8*ms, 80*ms, 120*ms) // spike from hop 3
+	for i := 0; i < 5; i++ {
+		run(2*ms, 8*ms, 10*ms, 20*ms)
+	}
+	evs, err := r.m.store.Events(r.sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, e := range evs {
+		got[e.Kind] = e.Zone + "@" + e.Addr + "/" + e.Title
+	}
+	for kind, wantZone := range map[string]string{KindLossHop: "ISP_EDGE", KindLoss: "ISP_EDGE", KindSpike: "ISP_EDGE"} {
+		if g, ok := got[kind]; !ok || g[:len(wantZone)] != wantZone {
+			t.Errorf("%s: got %q, want zone %s (all: %v)", kind, g, wantZone, got)
+		}
+	}
+}

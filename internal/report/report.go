@@ -40,7 +40,8 @@ type Report struct {
 	Zones         []ZoneReport       `json:"zones"`
 	Outages       []store.Outage     `json:"outages"`
 	OutageSeconds map[string]float64 `json:"outageSeconds"`
-	Verdict       string             `json:"verdict"`
+	Diagnosis     Diagnosis          `json:"diagnosis"`
+	Events        []store.Event      `json:"events"`
 	DataSHA256    string             `json:"dataSha256"`
 }
 
@@ -147,22 +148,20 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 		}
 		series = append(series, ser)
 	}
-	rep.Verdict = verdict(rep)
+	rep.Events, err = st.Events(id)
+	if err != nil {
+		return rep, nil, nil, err
+	}
+	rep.Diagnosis = Diagnose(rep.Events)
+	rep.PathChanges = rep.Diagnosis.RouteChanges
 	return rep, series, samples, nil
 }
 
-func verdict(r Report) string {
-	isp := r.OutageSeconds[string(path.ISPEdge)]
-	lan := r.OutageSeconds[string(path.LAN)]
-	wan := r.OutageSeconds[string(path.WAN)]
-	switch {
-	case isp == 0 && lan == 0 && wan == 0:
-		return "Keine Ausfälle erkannt. Latenz/Jitter bitte anhand der Tabellen bewerten."
-	case isp >= lan && isp >= wan:
-		return "Ausfälle beginnen im Provider-Netz (ISP_EDGE): Das Heimnetz (LAN) war während der Ausfälle erreichbar, der erste Provider-Hop und das Ziel nicht. Die Störung liegt beim Anschluss/Provider."
-	case lan >= wan:
-		return "Ausfälle beginnen im lokalen Netz (LAN): Der eigene Router war nicht erreichbar. Bitte WLAN/Kabel/Router prüfen, bevor der Provider kontaktiert wird."
-	default:
-		return "Ausfälle nur am Ziel/Internet (WAN): Heimnetz und Provider-Zugang waren erreichbar. Die Störung liegt hinter dem Anschluss (Peering/Transit/Zielserver)."
+// Live returns event log and diagnosis of a session without loading samples.
+func Live(st *store.Store, id int64) (Diagnosis, []store.Event, error) {
+	evs, err := st.Events(id)
+	if err != nil {
+		return Diagnosis{}, nil, err
 	}
+	return Diagnose(evs), evs, nil
 }

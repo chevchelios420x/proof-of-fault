@@ -194,6 +194,7 @@ func (m *Monitor) SetHopName(addr, name string) error {
 		return err
 	}
 	names := m.store.HopNames()
+	m.send(func(r *runner) { r.names = names })
 	m.setStatus(func(s *Status) { s.Names = names })
 	return nil
 }
@@ -280,6 +281,9 @@ func (m *Monitor) run(ctx context.Context, target string) error {
 	})
 
 	r := newRunner(m, sid, dst, hops, reps)
+	r.logEvent(store.Event{Kind: KindSession, Severity: "info",
+		Title:  fmt.Sprintf("Messung gestartet: %s (%s)", target, dst),
+		Detail: "Route: " + describePath(hops, r.names) + ". Messpunkte: " + repsText(reps) + "."})
 	return r.loop(ctx)
 }
 
@@ -291,11 +295,22 @@ type runner struct {
 	hops []path.Hop
 	reps []path.Representative
 
-	results chan result
-	zones   map[path.Zone]*zoneState
-	hopMode map[string]*hopProbe // individually watched hops by address
-	fault   path.Zone            // currently attributed outage zone, "" = none
-	pending []LiveSample
+	results    chan result
+	zones      map[path.Zone]*zoneState
+	hopMode    map[string]*hopProbe // individually watched hops by address
+	fault      path.Zone            // currently attributed outage zone, "" = none
+	faultSince time.Time
+	pending    []LiveSample
+
+	// event analysis
+	seq         int
+	nextSeq     int
+	ticks       map[int]*tick
+	done        map[int]bool
+	base        map[string]*baseline
+	episodes    map[string]*episode
+	names       map[string]string
+	pathUpdates chan []path.Hop
 
 	ctx context.Context
 	wg  *sync.WaitGroup
@@ -307,6 +322,7 @@ type hopProbe struct {
 }
 
 type result struct {
+	seq  int
 	zone string // zone or HopKey(addr)
 	at   time.Time
 	rtt  time.Duration // <0 = loss
@@ -320,7 +336,9 @@ type zoneState struct {
 
 func newRunner(m *Monitor, sid int64, dst netip.Addr, hops []path.Hop, reps []path.Representative) *runner {
 	r := &runner{m: m, sid: sid, dst: dst, hops: hops, reps: reps,
-		results: make(chan result, 256), zones: map[path.Zone]*zoneState{}, hopMode: map[string]*hopProbe{}}
+		results: make(chan result, 256), zones: map[path.Zone]*zoneState{}, hopMode: map[string]*hopProbe{},
+		seq: 0, nextSeq: 1, ticks: map[int]*tick{}, done: map[int]bool{}, base: map[string]*baseline{},
+		episodes: map[string]*episode{}, names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
 	for _, z := range path.Zones {
 		r.zones[z] = &zoneState{}
 	}
@@ -334,7 +352,6 @@ func (r *runner) loop(ctx context.Context) error {
 	defer flush.Stop()
 	rediscover := time.NewTicker(rediscoverEach)
 	defer rediscover.Stop()
-	pathUpdates := make(chan []path.Hop, 1)
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -346,6 +363,9 @@ func (r *runner) loop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			r.closeFault(time.Now())
+			r.drainTicks(true)
+			r.closeEpisodes(r.seq, true)
+			r.logEvent(store.Event{Kind: KindSession, Severity: "info", Title: "Messung beendet"})
 			return ctx.Err()
 		case <-tick.C:
 			r.fire(ctx, &wg)
@@ -354,17 +374,8 @@ func (r *runner) loop(ctx context.Context) error {
 		case <-flush.C:
 			r.flushLive()
 		case <-rediscover.C:
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if hops, err := path.Discover(ctx, r.m.prober, r.dst, nil); err == nil && len(hops) > 0 {
-					select {
-					case pathUpdates <- hops:
-					default:
-					}
-				}
-			}()
-		case hops := <-pathUpdates:
+			r.rediscover()
+		case hops := <-r.pathUpdates:
 			r.updatePath(ctx, hops)
 		case f := <-r.m.cmds:
 			f(r)
@@ -372,10 +383,31 @@ func (r *runner) loop(ctx context.Context) error {
 	}
 }
 
-// fire sends one probe per representative without blocking the loop.
+// rediscover traces the path again in the background; a changed path is
+// applied (and logged) by the loop.
+func (r *runner) rediscover() {
+	ctx := r.ctx
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		if hops, err := path.Discover(ctx, r.m.prober, r.dst, nil); err == nil && len(hops) > 0 {
+			select {
+			case r.pathUpdates <- hops:
+			default:
+			}
+		}
+	}()
+}
+
+// fire sends one probe per series without blocking the loop. All probes of
+// one call form a tick that is judged as a whole.
 func (r *runner) fire(ctx context.Context, wg *sync.WaitGroup) {
+	r.seq++
+	t := &tick{seq: r.seq, at: time.Now(), order: r.seriesOrder(), result: map[string]time.Duration{}}
+	r.ticks[t.seq] = t
+	r.drainTicks(false)
 	for _, rep := range r.reps {
-		r.probeOne(ctx, wg, string(rep.Zone), rep.Addr, rep.TTL, rep.Direct)
+		r.probeOne(ctx, wg, t.seq, string(rep.Zone), rep.Addr, rep.TTL, rep.Direct)
 	}
 	isRep := map[netip.Addr]bool{}
 	for _, rep := range r.reps {
@@ -386,11 +418,30 @@ func (r *runner) fire(ctx context.Context, wg *sync.WaitGroup) {
 		if err != nil || isRep[a] {
 			continue // zone representatives are measured already
 		}
-		r.probeOne(ctx, wg, HopKey(addr), a, h.ttl, h.direct)
+		r.probeOne(ctx, wg, t.seq, HopKey(addr), a, h.ttl, h.direct)
 	}
 }
 
-func (r *runner) probeOne(ctx context.Context, wg *sync.WaitGroup, key string, addr netip.Addr, ttl int, direct bool) {
+// drainTicks judges completed ticks strictly in order. Ticks that are
+// overdue (or all, when stopping) count missing results as loss.
+func (r *runner) drainTicks(all bool) {
+	for {
+		t, ok := r.ticks[r.nextSeq]
+		if !ok {
+			return
+		}
+		complete := len(t.result) >= len(t.order)
+		overdue := r.seq-t.seq > int(probeTimeout/interval)+2
+		if !complete && !overdue && !all {
+			return
+		}
+		delete(r.ticks, r.nextSeq)
+		r.nextSeq++
+		r.finishTick(t)
+	}
+}
+
+func (r *runner) probeOne(ctx context.Context, wg *sync.WaitGroup, seq int, key string, addr netip.Addr, ttl int, direct bool) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -404,7 +455,7 @@ func (r *runner) probeOne(ctx context.Context, wg *sync.WaitGroup, key string, a
 		if ctx.Err() != nil {
 			return
 		}
-		out := result{zone: key, at: res.Sent, rtt: -1}
+		out := result{seq: seq, zone: key, at: res.Sent, rtt: -1}
 		if out.at.IsZero() {
 			out.at = time.Now()
 		}
@@ -470,7 +521,10 @@ func (r *runner) syncWatched() {
 // reclassify applies changed zone overrides to the current path.
 func (r *runner) reclassify(ov map[string]path.Zone) {
 	path.Classify(r.hops, ov)
+	oldReps := r.reps
 	r.reps = path.Representatives(r.ctx, r.m.prober, r.hops, r.dst)
+	r.logEvent(store.Event{Kind: KindZones, Severity: "info", Title: "Zonen vom Benutzer geändert",
+		Detail: "Route: " + describePath(r.hops, r.names) + ". Messpunkte: " + repsText(oldReps) + " → " + repsText(r.reps) + "."})
 	for _, z := range path.Zones {
 		r.zones[z].streak = 0
 	}
@@ -487,6 +541,10 @@ func (r *runner) handle(res result) {
 	}
 	r.m.store.AddSample(store.Sample{SessionID: r.sid, Zone: res.zone, At: res.at, RTT: res.rtt})
 	r.pending = append(r.pending, LiveSample{Zone: res.zone, T: res.at.UnixMilli(), RTTMs: ms})
+	if t := r.ticks[res.seq]; t != nil {
+		t.result[res.zone] = res.rtt
+		r.drainTicks(false)
+	}
 	if strings.HasPrefix(res.zone, "hop:") {
 		return
 	}
@@ -532,8 +590,14 @@ func (r *runner) evaluate(now time.Time) {
 	}
 	r.closeFault(now)
 	if fault != "" {
-		r.fault = fault
+		r.fault, r.faultSince = fault, since
 		r.m.store.StartOutage(r.sid, string(fault), since)
+		r.logEvent(store.Event{T: since.UnixMilli(), Kind: KindOutageStart, Severity: "crit", Zone: string(fault),
+			Title:  fmt.Sprintf("AUSFALL: keine Verbindung ab Zone %s", fault),
+			Detail: fmt.Sprintf("Mindestens %d Sekunden in Folge keine Antwort ab %s bis zum Ziel. Ursache im Bereich %s. Route wird zur Kontrolle neu ermittelt.", outageAfter, fault, zoneText(fault))})
+		if r.ctx != nil {
+			r.rediscover()
+		}
 		r.m.emit(EvOutage, OutageEvent{Zone: fault, Since: since.UnixMilli(), Active: true})
 	}
 }
@@ -543,6 +607,13 @@ func (r *runner) closeFault(now time.Time) {
 		return
 	}
 	r.m.store.EndOutage(r.sid, string(r.fault), now)
+	d := now.Sub(r.faultSince).Round(time.Second)
+	r.logEvent(store.Event{T: now.UnixMilli(), Kind: KindOutageEnd, Severity: "ok", Zone: string(r.fault), Count: int(d / time.Second),
+		Title:  fmt.Sprintf("Ausfall beendet (Zone %s, Dauer %s)", r.fault, d),
+		Detail: fmt.Sprintf("Verbindung wieder da. Ausfall von %s bis %s.", r.faultSince.Format("15:04:05"), now.Format("15:04:05"))})
+	if r.ctx != nil {
+		r.rediscover()
+	}
 	r.m.emit(EvOutage, OutageEvent{Zone: r.fault, Since: now.UnixMilli(), Active: false})
 	r.fault = ""
 }
@@ -564,9 +635,15 @@ func (r *runner) updatePath(ctx context.Context, hops []path.Hop) {
 		return
 	}
 	path.Classify(hops, r.m.overrides())
+	old, oldReps := r.hops, r.reps
 	r.hops = hops
 	r.reps = path.Representatives(ctx, r.m.prober, hops, r.dst)
 	r.syncWatched()
+	detail := "Änderung: " + diffPath(old, hops) + ". Neue Route: " + describePath(hops, r.names) + "."
+	if repsText(oldReps) != repsText(r.reps) {
+		detail += " Messpunkte: " + repsText(oldReps) + " → " + repsText(r.reps) + "."
+	}
+	r.logEvent(store.Event{Kind: KindPathChange, Severity: "warn", Title: "Routenwechsel erkannt", Detail: detail})
 	r.m.store.SavePath(r.sid, time.Now(), hops)
 	r.m.setStatus(func(s *Status) { s.Hops, s.Reps = hops, r.reps })
 	r.m.emit(EvPath, hops)

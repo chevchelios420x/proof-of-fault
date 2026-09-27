@@ -120,6 +120,21 @@ func (a *App) ListSessions() ([]store.SessionInfo, error) {
 	return a.store.Sessions()
 }
 
+// LiveData is the event log and diagnosis of a (running) session.
+type LiveData struct {
+	Diagnosis report.Diagnosis `json:"diagnosis"`
+	Events    []store.Event    `json:"events"`
+}
+
+// GetLive returns event log and diagnosis without loading all samples.
+func (a *App) GetLive(id int64) (LiveData, error) {
+	if err := a.ready(); err != nil {
+		return LiveData{}, err
+	}
+	d, evs, err := report.Live(a.store, id)
+	return LiveData{Diagnosis: d, Events: evs}, err
+}
+
 // SessionData bundles report and chart series for the UI.
 type SessionData struct {
 	Report report.Report   `json:"report"`
@@ -146,8 +161,13 @@ func (a *App) Export(id int64, format string) (string, error) {
 		return "", err
 	}
 	name := fmt.Sprintf("proof-of-fault_%d_%s.%s", id, time.UnixMilli(r.Session.StartedAt).Format("2006-01-02_1504"), format)
+	ext := format
+	if format == "events" {
+		ext = "csv"
+		name = fmt.Sprintf("proof-of-fault_%d_%s_ereignisse.csv", id, time.UnixMilli(r.Session.StartedAt).Format("2006-01-02_1504"))
+	}
 	filter := runtime.FileFilter{DisplayName: "HTML-Bericht (*.html)", Pattern: "*.html"}
-	if format == "csv" {
+	if ext == "csv" {
 		filter = runtime.FileFilter{DisplayName: "CSV (*.csv)", Pattern: "*.csv"}
 	}
 	dst, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
@@ -164,6 +184,8 @@ func (a *App) Export(id int64, format string) (string, error) {
 	switch format {
 	case "csv":
 		err = report.WriteCSV(f, samples)
+	case "events":
+		err = report.WriteEventsCSV(f, r.Events)
 	case "html":
 		err = report.WriteHTML(f, r, series)
 	default:

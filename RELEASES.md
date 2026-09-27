@@ -6,6 +6,28 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.4.0 – 2026-09-27
+
+- **Ereignisprotokoll** (live, im Verlauf, im HTML-Bericht und als CSV-Export):
+  jede Messsekunde wird über alle Messpunkte gemeinsam ausgewertet.
+  - Paketverlust wird dem ersten Hop zugeordnet, ab dem alle weiteren Messpunkte
+    bis zum Ziel keine Antwort bekamen (mit Hop, Adresse, Name, Zone, Beginn, Ende,
+    Dauer und dem letzten noch funktionierenden Hop davor).
+  - Verluste nur an einem Zwischen-Hop bei erreichbarem Ziel werden als „harmlos“
+    (ICMP-Drosselung) protokolliert und nicht gewertet.
+  - Latenzspitzen (mehr als doppelt so langsam wie normal und mindestens 20 ms
+    darüber) werden ebenso dem Hop zugeordnet, ab dem sie bis zum Ziel auftreten.
+  - Ausfälle mit Beginn und Ende/Dauer.
+  - Routenwechsel mit genauer Änderung pro Hop (alt → neu), neuer Route und
+    geänderten Messpunkten; bei Beginn und Ende eines Ausfalls wird die Route
+    sofort neu geprüft.
+  - Start/Ende der Messung und Zonen-Änderungen durch den Benutzer.
+- **Diagnose für Laien** (live als Zwischenstand, im Verlauf und oben im
+  HTML-Bericht): klare Aussage, wo das Problem liegt (Heimnetz, Anbieter oder
+  Internet/Ziel), mit Sicherheit der Einschätzung, Begründung in Zahlen, dem Hop,
+  ab dem die Störungen meist beginnen, und konkreten Handlungsempfehlungen.
+- Hinweis: Sitzungen aus Versionen vor v0.4.0 haben kein Ereignisprotokoll.
+
 ## v0.3.0 – 2026-09-27
 
 - Live-Diagramm und Route-Tabelle passen zusammen: eine Linie pro Tabellenzeile,
