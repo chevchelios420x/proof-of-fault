@@ -28,7 +28,7 @@ Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.2.1.exe`](bui
    korrigieren (z. B. ein privates `10.x`-Transfernetz des Providers → `ISP_EDGE`).
    Die Zonenwahl wird pro Hop-Adresse dauerhaft gespeichert.
 4. Laufen lassen, bis die Störung auftritt. Messdaten landen in
-   `%AppData%\proof-of-fault\data.db`.
+   `%AppData%\proof-of-fault\data.db` (siehe [Wo liegen die Daten?](#wo-liegen-die-daten)).
 5. **Verlauf & Berichte** → Sitzung wählen → **Bericht (HTML/PDF)** oder
    **Rohdaten (CSV)**. Den HTML-Bericht im Browser öffnen und mit „Drucken → Als PDF
    speichern“ in eine PDF umwandeln.
@@ -36,6 +36,40 @@ Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.2.1.exe`](bui
 Tipps für belastbare Nachweise: Den PC **per LAN-Kabel** anschließen (sonst sieht der
 Provider WLAN als Ursache). Mehrere Stunden bis Tage messen und den Energiesparmodus
 bzw. Standby deaktivieren.
+
+## Wo liegen die Daten?
+
+Alle Messdaten speichert die App in einer SQLite-Datenbank im Benutzerprofil:
+
+```
+%AppData%\proof-of-fault\data.db
+```
+
+(meist `C:\Users\<Name>\AppData\Roaming\proof-of-fault\data.db`; im Explorer
+einfach `%AppData%\proof-of-fault` in die Adresszeile eingeben).
+
+**Inhalt:** alle Messsitzungen (Ziel, Start/Ende), jede einzelne Messung
+(Zeitpunkt, Zone bzw. Hop, Latenz oder Verlust), erkannte Ausfälle, die ermittelte
+Route samt Routenwechseln und die manuell gewählten Zonen pro Hop.
+
+**Dateien:** Während die App läuft, liegen daneben `data.db-wal` und `data.db-shm`
+(SQLite-WAL-Modus: neue Messwerte stehen zuerst in der `-wal`-Datei). Zum Sichern
+oder Kopieren die App vorher beenden – oder immer alle drei Dateien zusammen kopieren.
+
+**Größe:** grob 10–15 MB pro Tag bei 3 Messpunkten; jeder zusätzlich angehakte Hop
+etwa ein Drittel mehr (Schätzung).
+
+**Nicht in der Datenbank:**
+
+- Exporte (HTML-Bericht, CSV) landen dort, wo du sie im Speichern-Dialog ablegst.
+- Oberflächen-Einstellungen (zuletzt eingegebenes Ziel, angehakte Hops) speichert
+  die WebView2-Komponente in einem eigenen Profilordner, vermutlich
+  `%AppData%\proof-of-fault-vX.Y.Z.exe\EBWebView`. Er hängt am EXE-Namen, deshalb
+  gehen diese Einstellungen bei einer neuen Version verloren. Messdaten und
+  Zonenwahl sind davon nicht betroffen.
+
+**Alles löschen:** App beenden und den Ordner `%AppData%\proof-of-fault` entfernen
+(optional auch die `EBWebView`-Ordner der alten EXE-Versionen).
 
 ## Bauen
 
