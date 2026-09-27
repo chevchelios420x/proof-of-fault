@@ -97,3 +97,22 @@ func TestTickEvents(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomPointEvent(t *testing.T) {
+	r := newTestRunner(t)
+	order := []series{{key: "LAN", ttl: 1, zone: path.LAN}, {key: "WAN", ttl: targetTTL, zone: path.WAN}}
+	dev := series{key: DevKey("192.168.0.1"), zone: path.LAN, addr: "192.168.0.1", label: "Gerät Modem (192.168.0.1)"}
+	for seq := 1; seq <= 8; seq++ {
+		rtt := time.Duration(-1)
+		if seq > 3 {
+			rtt = time.Millisecond
+		}
+		r.seq = seq
+		r.finishTick(&tick{seq: seq, at: time.Now(), order: order, custom: []series{dev},
+			result: map[string]time.Duration{"LAN": time.Millisecond, "WAN": 5 * time.Millisecond, dev.key: rtt}})
+	}
+	evs, _ := r.m.store.Events(r.sid)
+	if len(evs) != 1 || evs[0].Kind != KindLossDevice || evs[0].Count != 3 {
+		t.Fatalf("unexpected events %+v", evs)
+	}
+}

@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS event (
 	value_ms   REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS event_idx ON event(session_id, ts_ns);
+CREATE TABLE IF NOT EXISTS custom_point (
+	host    TEXT PRIMARY KEY,       -- IP or host name entered by the user
+	name    TEXT NOT NULL DEFAULT '',
+	zone    TEXT NOT NULL DEFAULT '',
+	enabled INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS outage (
 	session_id INTEGER NOT NULL,
 	zone       TEXT NOT NULL,     -- zone the fault is attributed to
@@ -462,4 +468,44 @@ func (s *Store) Events(sid int64) ([]Event, error) {
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// CustomPoint is a user-defined extra measuring point (e.g. a LAN device).
+type CustomPoint struct {
+	Host    string `json:"host"`
+	Name    string `json:"name"`
+	Zone    string `json:"zone"`
+	Enabled bool   `json:"enabled"`
+}
+
+// CustomPoints returns all user-defined measuring points.
+func (s *Store) CustomPoints() ([]CustomPoint, error) {
+	rows, err := s.db.Query(`SELECT host, name, zone, enabled FROM custom_point ORDER BY rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CustomPoint
+	for rows.Next() {
+		var p CustomPoint
+		if err := rows.Scan(&p.Host, &p.Name, &p.Zone, &p.Enabled); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SaveCustomPoint inserts or updates a measuring point.
+func (s *Store) SaveCustomPoint(p CustomPoint) error {
+	_, err := s.db.Exec(`INSERT INTO custom_point(host, name, zone, enabled) VALUES(?,?,?,?)
+		ON CONFLICT(host) DO UPDATE SET name=excluded.name, zone=excluded.zone, enabled=excluded.enabled`,
+		p.Host, p.Name, p.Zone, p.Enabled)
+	return err
+}
+
+// DeleteCustomPoint removes a measuring point.
+func (s *Store) DeleteCustomPoint(host string) error {
+	_, err := s.db.Exec(`DELETE FROM custom_point WHERE host=?`, host)
+	return err
 }

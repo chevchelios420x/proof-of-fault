@@ -50,10 +50,21 @@ type Status struct {
 	Hops      []path.Hop            `json:"hops"`
 	Watched   []string              `json:"watched"` // hop addresses probed individually
 	Names     map[string]string     `json:"names"`   // user labels by hop address
+	Custom    []CustomStatus        `json:"custom"`  // user-defined measuring points
 }
 
 // HopKey is the series key used for individually watched hops.
 func HopKey(addr string) string { return "hop:" + addr }
+
+// DevKey is the series key of a user-defined measuring point.
+func DevKey(host string) string { return "dev:" + host }
+
+// CustomStatus is a user-defined measuring point as shown in the UI.
+type CustomStatus struct {
+	store.CustomPoint
+	IP    string `json:"ip"`    // resolved address ("" = not resolved)
+	Error string `json:"error"` // resolution problem
+}
 
 // LiveSample is sent to the UI in batches once per second.
 type LiveSample struct {
@@ -93,6 +104,7 @@ func New(p probe.Prober, s *store.Store, emit Emitter) *Monitor {
 		}
 	}
 	m.status = Status{State: "idle", Watched: m.watchedList(), Names: s.HopNames()}
+	go m.applyCustom() // resolving host names must not delay the start
 	return m
 }
 
@@ -122,7 +134,7 @@ func (m *Monitor) Start(target string) error {
 	m.cancel = cancel
 	m.done = make(chan struct{})
 	m.cmds = make(chan func(*runner), 16)
-	m.status = Status{State: "resolving", Target: target, Watched: m.watchedList(), Names: m.store.HopNames()}
+	m.status = Status{State: "resolving", Target: target, Watched: m.watchedList(), Names: m.store.HopNames(), Custom: m.status.Custom}
 	m.mu.Unlock()
 
 	go func() {
@@ -186,6 +198,70 @@ func (m *Monitor) SetHopWatched(addr string, on bool) {
 	m.mu.Unlock()
 	m.send(func(r *runner) { r.syncWatched() })
 	m.setStatus(func(*Status) {})
+}
+
+// customStatus resolves all user-defined measuring points.
+func (m *Monitor) customStatus(ctx context.Context) []CustomStatus {
+	pts, _ := m.store.CustomPoints()
+	out := make([]CustomStatus, 0, len(pts))
+	for _, p := range pts {
+		cs := CustomStatus{CustomPoint: p}
+		rctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		a, err := resolve(rctx, p.Host)
+		cancel()
+		if err != nil {
+			cs.Error = err.Error()
+		} else {
+			cs.IP = a.String()
+		}
+		out = append(out, cs)
+	}
+	return out
+}
+
+// SaveCustomPoint adds or updates a user-defined measuring point. An empty
+// zone is derived from the address (private → LAN, otherwise WAN).
+func (m *Monitor) SaveCustomPoint(p store.CustomPoint) error {
+	p.Host = strings.TrimSpace(p.Host)
+	p.Name = strings.TrimSpace(p.Name)
+	if p.Host == "" {
+		return errors.New("bitte IP-Adresse oder Hostnamen angeben")
+	}
+	if p.Zone != "" && !path.ValidZone(path.Zone(p.Zone)) {
+		return fmt.Errorf("ungültige Zone %q", p.Zone)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	a, err := resolve(ctx, p.Host)
+	cancel()
+	if err != nil {
+		return err
+	}
+	if p.Zone == "" {
+		p.Zone = string(path.WAN)
+		if a.IsPrivate() || a.IsLinkLocalUnicast() {
+			p.Zone = string(path.LAN)
+		}
+	}
+	if err := m.store.SaveCustomPoint(p); err != nil {
+		return err
+	}
+	m.applyCustom()
+	return nil
+}
+
+// DeleteCustomPoint removes a user-defined measuring point.
+func (m *Monitor) DeleteCustomPoint(host string) error {
+	if err := m.store.DeleteCustomPoint(host); err != nil {
+		return err
+	}
+	m.applyCustom()
+	return nil
+}
+
+func (m *Monitor) applyCustom() {
+	cs := m.customStatus(context.Background())
+	m.send(func(r *runner) { r.setCustom(cs) })
+	m.setStatus(func(s *Status) { s.Custom = cs })
 }
 
 // SetHopName stores a user label for a hop ("" removes it).
@@ -281,6 +357,7 @@ func (m *Monitor) run(ctx context.Context, target string) error {
 	})
 
 	r := newRunner(m, sid, dst, hops, reps)
+	r.setCustom(m.Status().Custom)
 	r.logEvent(store.Event{Kind: KindSession, Severity: "info",
 		Title:  fmt.Sprintf("Messung gestartet: %s (%s)", target, dst),
 		Detail: "Route: " + describePath(hops, r.names) + ". Messpunkte: " + repsText(reps) + "."})
@@ -311,6 +388,7 @@ type runner struct {
 	episodes    map[string]*episode
 	names       map[string]string
 	pathUpdates chan []path.Hop
+	custom      []customPoint
 
 	ctx context.Context
 	wg  *sync.WaitGroup
@@ -404,6 +482,9 @@ func (r *runner) rediscover() {
 func (r *runner) fire(ctx context.Context, wg *sync.WaitGroup) {
 	r.seq++
 	t := &tick{seq: r.seq, at: time.Now(), order: r.seriesOrder(), result: map[string]time.Duration{}}
+	for _, c := range r.custom {
+		t.custom = append(t.custom, c.s)
+	}
 	r.ticks[t.seq] = t
 	r.drainTicks(false)
 	for _, rep := range r.reps {
@@ -420,6 +501,31 @@ func (r *runner) fire(ctx context.Context, wg *sync.WaitGroup) {
 		}
 		r.probeOne(ctx, wg, t.seq, HopKey(addr), a, h.ttl, h.direct)
 	}
+	for _, c := range r.custom {
+		r.probeOne(ctx, wg, t.seq, c.s.key, c.addr, 0, true)
+	}
+}
+
+// customPoint is an enabled, resolved user-defined measuring point.
+type customPoint struct {
+	s    series
+	addr netip.Addr
+}
+
+func (r *runner) setCustom(cs []CustomStatus) {
+	r.custom = nil
+	for _, c := range cs {
+		a, err := netip.ParseAddr(c.IP)
+		if !c.Enabled || err != nil {
+			continue
+		}
+		label := c.Host
+		if c.Name != "" {
+			label = c.Name + " (" + c.Host + ")"
+		}
+		r.custom = append(r.custom, customPoint{addr: a,
+			s: series{key: DevKey(c.Host), zone: path.Zone(c.Zone), addr: c.IP, label: "Gerät " + label}})
+	}
 }
 
 // drainTicks judges completed ticks strictly in order. Ticks that are
@@ -430,7 +536,7 @@ func (r *runner) drainTicks(all bool) {
 		if !ok {
 			return
 		}
-		complete := len(t.result) >= len(t.order)
+		complete := len(t.result) >= len(t.order)+len(t.custom)
 		overdue := r.seq-t.seq > int(probeTimeout/interval)+2
 		if !complete && !overdue && !all {
 			return
@@ -545,7 +651,7 @@ func (r *runner) handle(res result) {
 		t.result[res.zone] = res.rtt
 		r.drainTicks(false)
 	}
-	if strings.HasPrefix(res.zone, "hop:") {
+	if strings.HasPrefix(res.zone, "hop:") || strings.HasPrefix(res.zone, "dev:") {
 		return
 	}
 	z := r.zones[path.Zone(res.zone)]

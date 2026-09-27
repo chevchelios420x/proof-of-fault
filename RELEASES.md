@@ -6,6 +6,18 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.5.0 – 2026-09-27
+
+- **Manuelle Messpunkte** (Route-Karte → „Weitere Messpunkte“): beliebige IPs oder
+  Hostnamen zusätzlich jede Sekunde anpingen, z. B. ein zweiter Router/Modem
+  (wie 192.168.0.1, falls er aus der Route verschwindet), Repeater, NAS oder
+  andere Server. Mit Name und Zone (Auto: private Adresse → LAN, sonst WAN), an-
+  und abschaltbar, dauerhaft gespeichert; eigene Linie im Diagramm und im Verlauf.
+- Ereignisprotokoll: „Keine Antwort von Gerät …“ mit Dauer und dem Zustand des
+  Internetwegs zur selben Zeit (Heimrouter / Ziel erreichbar oder nicht). Die
+  Diagnose listet diese Geräte separat auf, ohne sie in die Bewertung des
+  Internetwegs einzurechnen.
+
 ## v0.4.0 – 2026-09-27
 
 - **Ereignisprotokoll** (live, im Verlauf, im HTML-Bericht und als CSV-Export):

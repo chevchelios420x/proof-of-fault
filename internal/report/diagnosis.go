@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
@@ -29,6 +30,7 @@ type Diagnosis struct {
 	Advice       []string       `json:"advice"`
 	Zones        []ZoneFindings `json:"zones"`
 	Harmless     int            `json:"harmless"`
+	Devices      map[string]int `json:"devices"` // seconds without answer per user-defined point
 	RouteChanges int            `json:"routeChanges"`
 	TopOrigin    string         `json:"topOrigin"` // most frequent hop where problems start
 }
@@ -50,6 +52,12 @@ func Diagnose(events []store.Event) Diagnosis {
 			continue
 		case "path_change":
 			d.RouteChanges++
+			continue
+		case "loss_device":
+			if d.Devices == nil {
+				d.Devices = map[string]int{}
+			}
+			d.Devices[strings.TrimPrefix(e.Title, "Keine Antwort von ")] += e.Count
 			continue
 		}
 		if f == nil {
@@ -114,6 +122,7 @@ func Diagnose(events []store.Event) Diagnosis {
 		if d.Harmless > 0 {
 			d.Explanation = append(d.Explanation, fmt.Sprintf("%d harmlose Einzelverluste an Zwischen-Hops (ICMP-Drosselung) wurden ignoriert – sie beeinträchtigen die Verbindung nicht.", d.Harmless))
 		}
+		d.Explanation = append(d.Explanation, deviceLines(d.Devices)...)
 		d.Advice = []string{"Messung länger laufen lassen, bis die Störung wieder auftritt – das Protokoll hält dann genau fest, wo sie beginnt."}
 		return d
 	}
@@ -159,6 +168,7 @@ func Diagnose(events []store.Event) Diagnosis {
 	if d.Harmless > 0 {
 		d.Explanation = append(d.Explanation, fmt.Sprintf("%d Einzelverluste an Zwischen-Hops wurden als harmlos erkannt (ICMP-Drosselung, das Ziel antwortete) und nicht gewertet.", d.Harmless))
 	}
+	d.Explanation = append(d.Explanation, deviceLines(d.Devices)...)
 	if d.RouteChanges > 0 {
 		d.Explanation = append(d.Explanation, fmt.Sprintf("Die Route hat sich %d-mal geändert (Details im Ereignisprotokoll). Häufige Routenwechsel können auf Instabilität im Anbieter-Netz hindeuten.", d.RouteChanges))
 	}
@@ -200,4 +210,17 @@ func zoneName(z path.Zone) string {
 		return "Internet/Ziel (WAN)"
 	}
 	return string(z)
+}
+
+func deviceLines(dev map[string]int) []string {
+	keys := make([]string, 0, len(dev))
+	for k := range dev {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []string
+	for _, k := range keys {
+		out = append(out, fmt.Sprintf("Manueller Messpunkt %s: insgesamt %d s ohne Antwort (Details im Ereignisprotokoll; fließt nicht in die Bewertung des Internetwegs ein).", k, dev[k]))
+	}
+	return out
 }

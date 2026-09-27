@@ -1,12 +1,12 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
   import Diagnosis from './Diagnosis.svelte'
   import { Timeline } from './timeline.js'
-  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, hopColor, buildSeries } from './zones.js'
+  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, hopColor, buildSeries, devColor } from './zones.js'
 
   let tab = 'live'
   let version = ''
@@ -36,7 +36,27 @@
   // Hops that are zone measuring points appear as zone line.
   $: repZoneByAddr = Object.fromEntries((status.reps || []).map((r) => [r.ip, r.zone]))
   // One chart line per route row, in route order, same color and label as the table.
-  $: liveSeries = buildSeries({ hops: status.hops || [], reps: status.reps || [], watched, names })
+  $: custom = status.custom || []
+  $: liveSeries = buildSeries({ hops: status.hops || [], reps: status.reps || [], watched, names, custom })
+
+  // User-defined measuring points (e.g. other devices in the LAN).
+  let newHost = '', newName = '', newZone = ''
+  let customBusy = false
+  async function addCustom() {
+    customBusy = true
+    try {
+      await SaveCustomPoint(newHost.trim(), newName.trim(), newZone, true)
+      newHost = ''; newName = ''; newZone = ''
+    } catch (e) { error = String(e) }
+    customBusy = false
+  }
+  async function saveCustom(c, patch) {
+    const x = { ...c, ...patch }
+    try { await SaveCustomPoint(x.host, x.name, x.zone, x.enabled) } catch (e) { error = String(e) }
+  }
+  async function removeCustom(c) {
+    try { await DeleteCustomPoint(c.host) } catch (e) { error = String(e) }
+  }
 
   // Series keys hidden in the live chart (legend or table checkbox).
   let hidden = new Set(loadHidden())
@@ -266,6 +286,42 @@
             {/each}
           </table>
           <p class="muted small">Zone ändern: gilt sofort und wird für diesen Hop dauerhaft gemerkt. „Auto“ stellt die automatische Einteilung wieder her.</p>
+
+          <h2 class="sub">Weitere Messpunkte (manuell)</h2>
+          <p class="muted small">Beliebige Geräte oder Adressen zusätzlich jede Sekunde anpingen, z. B. ein zweiter Router/Modem, Repeater, NAS oder ein anderer Server. Werden dauerhaft gespeichert und bei jeder Messung mitgemessen.</p>
+          <table class="route">
+            <tr><th>Adresse / Host</th><th>Name</th><th>Zone</th><th></th><th>Diagramm</th></tr>
+            {#each custom as c, i (c.host)}
+              <tr>
+                <td>{c.host}{#if c.ip && c.ip !== c.host}<br /><small class="muted">{c.ip}</small>{/if}{#if c.error}<br /><small class="bad">{c.error}</small>{/if}</td>
+                <td><input class="name" value={c.name} placeholder="optional" on:change={(e) => saveCustom(c, { name: e.target.value })}
+                  on:keydown={(e) => e.key === 'Enter' && e.target.blur()} /></td>
+                <td>
+                  <select style="color:{ZONE_COLOR[c.zone]}" value={c.zone} on:change={(e) => saveCustom(c, { zone: e.target.value })}>
+                    {#each ZONES as z}<option value={z}>{z}</option>{/each}
+                  </select>
+                </td>
+                <td><button class="del" title="Messpunkt entfernen" on:click={() => removeCustom(c)}>✕</button></td>
+                <td>
+                  <label class="toggle" title="Messen und im Diagramm anzeigen">
+                    <input type="checkbox" checked={c.enabled} on:change={(e) => saveCustom(c, { enabled: e.target.checked })} />
+                    <span class="dot" style="background:{devColor(i)}"></span>
+                  </label>
+                </td>
+              </tr>
+            {/each}
+            <tr>
+              <td><input class="name" bind:value={newHost} placeholder="IP oder Hostname" on:keydown={(e) => e.key === 'Enter' && newHost && addCustom()} /></td>
+              <td><input class="name" bind:value={newName} placeholder="Name (optional)" /></td>
+              <td>
+                <select bind:value={newZone}>
+                  <option value="">Auto</option>
+                  {#each ZONES as z}<option value={z}>{z}</option>{/each}
+                </select>
+              </td>
+              <td colspan="2"><button class="primary" disabled={!newHost.trim() || customBusy} on:click={addCustom}>Hinzufügen</button></td>
+            </tr>
+          </table>
         </section>
       </div>
     {/if}
@@ -309,7 +365,7 @@
           </section>
           <section class="card">
             <h2>Latenzverlauf</h2>
-            <Chart timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone) })}
+            <Chart timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
               hidden={histHidden} onToggle={(k, show) => { show ? histHidden.delete(k) : histHidden.add(k); histHidden = new Set(histHidden) }} version={histVersion} />
           </section>
           <section class="card">
@@ -351,6 +407,8 @@
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
   .route select { padding: 2px 4px; font-size: 12px; }
   .route .name { width: 130px; padding: 2px 6px; font-size: 12px; }
+  .sub { margin-top: 18px; }
+  .del { padding: 1px 8px; font-size: 12px; }
   .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .small { font-size: 12px; margin: 6px 0 0; }

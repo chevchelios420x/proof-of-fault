@@ -18,7 +18,7 @@ Status: **Windows** (IPv4). Linux/macOS folgen (siehe `internal/probe`).
 
 ## Benutzung (Windows)
 
-Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.4.0.exe`](build/bin/proof-of-fault-v0.4.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
+Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.5.0.exe`](build/bin/proof-of-fault-v0.5.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
 
 1. `proof-of-fault.exe` starten. Es sind keine Admin-Rechte und keine Installation
    nötig; die WebView2-Runtime ist bei Windows 10/11 vorhanden.
@@ -28,6 +28,8 @@ Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.4.0.exe`](bui
    korrigieren (z. B. ein privates `10.x`-Transfernetz des Providers → `ISP_EDGE`).
    Zusätzlich kann jeder Hop einen eigenen Namen bekommen (erscheint in Legende und
    Bericht). Zone, Name und Häkchen werden pro Hop-Adresse dauerhaft gespeichert.
+   Unter „Weitere Messpunkte“ lassen sich zusätzliche Geräte/Adressen (z. B. ein
+   zweiter Router, Repeater, NAS) eintragen, die jede Sekunde mitgemessen werden.
 4. Laufen lassen, bis die Störung auftritt. Messdaten landen in
    `%AppData%\proof-of-fault\data.db` (siehe [Wo liegen die Daten?](#wo-liegen-die-daten)).
 5. **Verlauf & Berichte** → Sitzung wählen → **Bericht (HTML/PDF)** oder

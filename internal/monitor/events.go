@@ -19,9 +19,10 @@ const (
 	KindPath        = "path"
 	KindPathChange  = "path_change"
 	KindZones       = "zones"
-	KindLoss        = "loss"     // loss from a hop on up to the target: real
-	KindLossHop     = "loss_hop" // loss only at an intermediate hop: harmless
-	KindSpike       = "spike"    // latency spike from a hop on up to the target
+	KindLoss        = "loss"        // loss from a hop on up to the target: real
+	KindLossHop     = "loss_hop"    // loss only at an intermediate hop: harmless
+	KindSpike       = "spike"       // latency spike from a hop on up to the target
+	KindLossDevice  = "loss_device" // user-defined measuring point did not answer
 	KindOutageStart = "outage_start"
 	KindOutageEnd   = "outage_end"
 )
@@ -49,6 +50,7 @@ type tick struct {
 	seq    int
 	at     time.Time
 	order  []series // sorted by TTL, target last
+	custom []series // user-defined measuring points (not on the path)
 	result map[string]time.Duration
 }
 
@@ -197,7 +199,35 @@ func (r *runner) finishTick(t *tick) {
 		}
 		r.touch(t, KindSpike, from, peak, base[from], lost)
 	}
+	r.checkCustom(t, lost)
 	r.closeEpisodes(t.seq, false)
+}
+
+// checkCustom logs unanswered user-defined measuring points together with
+// the state of the path at the same moment.
+func (r *runner) checkCustom(t *tick, pathLost []bool) {
+	for _, c := range t.custom {
+		if rtt, ok := t.result[c.key]; ok && rtt >= 0 {
+			continue
+		}
+		ctx := "Der Heimrouter antwortete zur selben Zeit."
+		for i, s := range t.order {
+			if s.zone == path.LAN && pathLost[i] {
+				ctx = "Zur selben Zeit antwortete auch der Heimrouter nicht."
+			}
+		}
+		if n := len(t.order); n > 0 && pathLost[n-1] {
+			ctx += " Das Ziel war ebenfalls nicht erreichbar."
+		}
+		key := KindLossDevice + "|" + c.key
+		ep := r.episodes[key]
+		if ep == nil {
+			ep = &episode{kind: KindLossDevice, attr: c, start: t.at, lost: map[string]int{}, before: ctx}
+			r.episodes[key] = ep
+		}
+		ep.last, ep.lastSeq = t.at, t.seq
+		ep.ticks++
+	}
 }
 
 // touch extends the running episode of the same kind and origin or opens a new one.
@@ -265,6 +295,10 @@ func (ep *episode) toEvent() store.Event {
 		e.Severity = "info"
 		e.Title = fmt.Sprintf("Verlust nur an %s (harmlos)", ep.attr.label)
 		e.Detail = fmt.Sprintf("%d Probe(s) ohne Antwort, aber spätere Hops und das Ziel antworteten. Typische ICMP-Drosselung dieses Routers – kein Verbindungsproblem.", ep.ticks)
+	case KindLossDevice:
+		e.Severity = "warn"
+		e.Title = fmt.Sprintf("Keine Antwort von %s", ep.attr.label)
+		e.Detail = fmt.Sprintf("%d Sekunde(n) ohne Antwort (%s). %s", ep.ticks, secs, ep.before)
 	case KindSpike:
 		e.Severity = "warn"
 		e.ValueMs = ms(ep.peak)

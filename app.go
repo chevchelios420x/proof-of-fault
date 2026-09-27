@@ -95,6 +95,23 @@ func (a *App) SetHopName(addr, name string) error {
 	return a.monitor.SetHopName(addr, name)
 }
 
+// SaveCustomPoint adds or updates a user-defined measuring point
+// (IP or host name, optional name, zone "" = automatic).
+func (a *App) SaveCustomPoint(host, name, zone string, enabled bool) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.monitor.SaveCustomPoint(store.CustomPoint{Host: host, Name: name, Zone: zone, Enabled: enabled})
+}
+
+// DeleteCustomPoint removes a user-defined measuring point.
+func (a *App) DeleteCustomPoint(host string) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.monitor.DeleteCustomPoint(host)
+}
+
 // SetHopZone assigns a zone to a hop (remembered per hop address); an empty
 // zone restores the automatic classification.
 func (a *App) SetHopZone(addr, zone string) error {

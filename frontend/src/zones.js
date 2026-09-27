@@ -35,7 +35,11 @@ export function hopLabel(ttl, addr, name, repZone) {
 
 // buildSeries returns the chart series in route order (TTL). Zone
 // measuring points keep their zone key; other hops appear when watched.
-export function buildSeries({ hops = [], reps = [], watched = [], names = {}, keys = null }) {
+export const devKey = (host) => 'dev:' + host
+const DEV_PALETTE = ['#000000', '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#469990', '#9a6324']
+export const devColor = (i) => DEV_PALETTE[i % DEV_PALETTE.length]
+
+export function buildSeries({ hops = [], reps = [], watched = [], names = {}, keys = null, custom = [] }) {
   const repZone = Object.fromEntries(reps.map((r) => [r.ip, r.zone]))
   const out = []
   const seen = new Set()
@@ -52,10 +56,15 @@ export function buildSeries({ hops = [], reps = [], watched = [], names = {}, ke
     if (seen.has(r.ip) || (keys && !keys.includes(r.zone))) continue
     out.push({ key: r.zone, addr: r.ip, ttl: 0, zone: r.zone, label: hopLabel(0, r.ip, names[r.ip], r.zone), color: ZONE_COLOR[r.zone] })
   }
+  custom.forEach((c, i) => {
+    if (!c.enabled || !c.ip || (keys && !keys.includes(devKey(c.host)))) return
+    out.push({ key: devKey(c.host), addr: c.ip, ttl: 0, zone: c.zone, label: `Gerät ${c.name || c.host}`, color: devColor(i) })
+  })
   for (const k of keys || []) {
     if (out.some((x) => x.key === k)) continue
-    const addr = isHopKey(k) ? k.slice(4) : k
-    out.push({ key: k, addr, ttl: 0, zone: isHopKey(k) ? '' : k, label: names[addr] || addr, color: ZONE_COLOR[k] || '#555' })
+    const isDev = k.startsWith('dev:')
+    const addr = isHopKey(k) || isDev ? k.slice(4) : k
+    out.push({ key: k, addr, ttl: 0, zone: isHopKey(k) || isDev ? '' : k, label: (isDev ? 'Gerät ' : '') + (names[addr] || addr), color: ZONE_COLOR[k] || '#555' })
   }
   return out
 }

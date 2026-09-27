@@ -42,7 +42,7 @@ func chartSVG(series []Series) template.HTML {
 	const w, h, pad = 1000.0, 220.0, 40.0
 	var b strings.Builder
 	for _, s := range series {
-		if len(s.T) == 0 || strings.HasPrefix(string(s.Zone), "hop:") {
+		if len(s.T) == 0 || strings.HasPrefix(string(s.Zone), "hop:") || strings.HasPrefix(string(s.Zone), "dev:") {
 			continue
 		}
 		t0, t1 := float64(s.T[0]), float64(s.T[len(s.T)-1])
@@ -179,6 +179,8 @@ func kindText(k string) string {
 		return "Verlust"
 	case "loss_hop":
 		return "Verlust (harmlos)"
+	case "loss_device":
+		return "Gerät"
 	case "spike":
 		return "Latenzspitze"
 	case "outage_start":
