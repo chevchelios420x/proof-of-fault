@@ -15,16 +15,18 @@ const EvLog = "event"
 
 // Event kinds of the event log.
 const (
-	KindSession     = "session"
-	KindPath        = "path"
-	KindPathChange  = "path_change"
-	KindZones       = "zones"
-	KindLoss        = "loss"        // loss from a hop on up to the target: real
-	KindLossHop     = "loss_hop"    // loss only at an intermediate hop: harmless
-	KindSpike       = "spike"       // latency spike from a hop on up to the target
-	KindLossDevice  = "loss_device" // user-defined measuring point did not answer
-	KindOutageStart = "outage_start"
-	KindOutageEnd   = "outage_end"
+	KindSession       = "session"
+	KindPath          = "path"
+	KindPathChange    = "path_change"
+	KindZones         = "zones"
+	KindLoss          = "loss"           // loss from a hop on up to the target: real
+	KindLossHop       = "loss_hop"       // loss only at an intermediate hop: harmless
+	KindSpike         = "spike"          // latency spike from a hop on up to the target
+	KindLossDevice    = "loss_device"    // user-defined measuring point did not answer
+	KindPersistent    = "persistent"     // user point without answer for a long time
+	KindPersistentEnd = "persistent_end" // … answers again
+	KindOutageStart   = "outage_start"
+	KindOutageEnd     = "outage_end"
 )
 
 const (
@@ -203,8 +205,6 @@ func (r *runner) finishTick(t *tick) {
 		}
 		r.touch(t, KindSpike, from, peak, base[from], lost)
 	}
-	r.checkCustom(t, lost)
-
 	st := map[string]byte{}
 	for i, s := range t.order {
 		switch {
@@ -217,6 +217,7 @@ func (r *runner) finishTick(t *tick) {
 		}
 	}
 	r.customStates(t, st)
+	r.checkCustom(t, lost, st)
 	ts := &tickState{t: t, state: st}
 	ts.class, ts.origin = classifyTick(t, st, lostFrom)
 	r.trackIncident(ts)
@@ -226,10 +227,13 @@ func (r *runner) finishTick(t *tick) {
 
 // checkCustom logs unanswered user-defined measuring points together with
 // the state of the path at the same moment.
-func (r *runner) checkCustom(t *tick, pathLost []bool) {
+func (r *runner) checkCustom(t *tick, pathLost []bool, st map[string]byte) {
 	for _, c := range t.custom {
 		if c.zone == ZoneNone {
 			continue // recorded, but not evaluated
+		}
+		if st[c.key] == 'd' {
+			continue // permanently down: logged once, see markPersistent
 		}
 		if rtt, ok := t.result[c.key]; ok && rtt >= 0 {
 			continue

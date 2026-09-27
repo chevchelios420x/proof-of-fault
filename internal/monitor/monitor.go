@@ -455,6 +455,7 @@ type runner struct {
 	recent      []*tickState
 	inc         *incBuf
 	realLost    map[string]int // losses that reached the target, per series
+	persist     map[string]int // consecutive seconds without answer per custom point
 	cfg         config.Settings
 
 	ctx context.Context
@@ -483,7 +484,7 @@ func newRunner(m *Monitor, sid int64, dst netip.Addr, hops []path.Hop, reps []pa
 	r := &runner{m: m, sid: sid, dst: dst, hops: hops, reps: reps,
 		results: make(chan result, 256), zones: map[path.Zone]*zoneState{}, hopMode: map[string]*hopProbe{},
 		seq: 0, nextSeq: 1, ticks: map[int]*tick{}, done: map[int]bool{}, base: map[string]*baseline{},
-		episodes: map[string]*episode{}, realLost: map[string]int{}, cfg: m.Settings(), names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
+		episodes: map[string]*episode{}, realLost: map[string]int{}, persist: map[string]int{}, cfg: m.Settings(), names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
 	for _, z := range path.Zones {
 		r.zones[z] = &zoneState{}
 	}

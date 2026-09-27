@@ -117,7 +117,7 @@ th{background:#f1f1f1}
 .lvl-none{background:#eef8f1;border-color:#2a9d8f}.lvl-lan{border-color:#2a9d8f}.lvl-wan{border-color:#3a5a8c}
 .log td{text-align:left;vertical-align:top}.log td:nth-child(1),.log td:nth-child(2){white-space:nowrap}
 .c{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
-.c-p{background:repeating-linear-gradient(45deg,#9b8ec7 0 3px,#d8d0f0 3px 6px)}.c-ok{background:#52b788}.c-s{background:#f4a261}.c-x{background:#d62828}.c-n{background:#ddd}
+.note{background:#f4f4f4;border-left:4px solid #999;padding:8px 14px;margin:8px 0;white-space:pre-wrap}.c-d{background:#5a3a3a}.c-p{background:repeating-linear-gradient(45deg,#9b8ec7 0 3px,#d8d0f0 3px 6px)}.c-ok{background:#52b788}.c-s{background:#f4a261}.c-x{background:#d62828}.c-n{background:#ddd}
 table.mx{width:auto;border-collapse:separate;border-spacing:1px}table.mx td{padding:0;border:none;width:9px;height:14px}
 table.mx td.lbl{padding:0 8px 0 0;width:auto;white-space:nowrap;text-align:left;font-size:12px}
 table.mx td.pre{opacity:.45}table.mx td.grp{font-size:11px;font-weight:700;text-transform:uppercase;color:#666;padding:6px 0 2px 6px;text-align:left;width:auto}.inc{page-break-inside:avoid;margin-bottom:18px}.mxwrap{overflow-x:auto}
@@ -130,6 +130,7 @@ small{color:#666}
 <h1>Messprotokoll Internetverbindung</h1>
 <p><b>Ziel:</b> {{.R.Session.Target}} ({{.R.Session.TargetIP}}) &nbsp; <b>Messung:</b> {{ts .R.Session.StartedAt}} – {{ts .R.Session.EndedAt}} ({{dur .R.DurationSec}})<br>
 <b>Messrechner:</b> <small>{{.R.Session.HostInfo}}</small> &nbsp; <b>Erstellt:</b> {{ts .R.GeneratedAt}}</p>
+{{if .R.Session.Note}}<div class="note"><b>Kommentar:</b> {{.R.Session.Note}}</div>{{end}}
 <div class="verdict lvl-{{.R.Diagnosis.Level}}">
 <h2 style="margin-top:0">Diagnose: {{.R.Diagnosis.Headline}}</h2>
 <p><b>Sicherheit der Einschätzung:</b> {{.R.Diagnosis.Confidence}}</p>
@@ -151,7 +152,7 @@ small{color:#666}
 
 <h2>Störungen ({{len .R.Incidents}})</h2>
 {{if .R.Incidents}}
-<small>Eine Störung beginnt, sobald das Ziel, ein Ausweichziel oder ein manuell eingetragenes Gerät nicht antwortet (Verluste nur an einem Zwischen-Hop zählen nicht). Die Matrix zeigt jede Sekunde für jeden Messpunkt: <span class="c c-ok"></span> antwortet, <span class="c c-s"></span> deutlich langsamer als normal, <span class="c c-x"></span> keine Antwort, <span class="c c-p"></span> möglicher Fehlalarm (Ping weg, TCP ok oder umgekehrt – zählt als erreichbar), <span class="c c-n"></span> nicht gemessen. Blasse Spalten: 10 s davor bzw. 5 s danach (zum Vergleich).</small>
+<small>Eine Störung beginnt, sobald das Ziel, ein Ausweichziel oder ein manuell eingetragenes Gerät nicht antwortet (Verluste nur an einem Zwischen-Hop zählen nicht). Die Matrix zeigt jede Sekunde für jeden Messpunkt: <span class="c c-ok"></span> antwortet, <span class="c c-s"></span> deutlich langsamer als normal, <span class="c c-x"></span> keine Antwort, <span class="c c-d"></span> dauerhaft ohne Antwort (> 2 min, nicht gewertet), <span class="c c-p"></span> möglicher Fehlalarm (Ping weg, TCP ok oder umgekehrt – zählt als erreichbar), <span class="c c-n"></span> nicht gemessen. Blasse Spalten: 10 s davor bzw. 5 s danach (zum Vergleich).</small>
 <table class="inclist"><tr><th>#</th><th>Beginn</th><th>Dauer</th><th>Art</th><th>Beschreibung</th></tr>
 {{range $i, $in := .R.Incidents}}<tr><td><a href="#inc{{$in.ID}}">{{inc $i}}</a></td><td>{{ts $in.T}}</td><td>{{$in.Seconds}} s</td><td>{{cls $in.Class}}</td><td>{{$in.Title}}</td></tr>
 {{end}}</table>
@@ -206,6 +207,10 @@ func kindText(k string) string {
 		return "Verlust (harmlos)"
 	case "loss_device":
 		return "Gerät"
+	case "persistent":
+		return "dauerhaft gestört"
+	case "persistent_end":
+		return "wieder erreichbar"
 	case "spike":
 		return "Latenzspitze"
 	case "outage_start":
@@ -283,8 +288,8 @@ func groupSeries(series []store.IncidentSeries, zones []config.ZoneDef) []series
 }
 
 func writeMatrixRow(b *strings.Builder, in store.Incident, s store.IncidentSeries) {
-	state := map[byte]string{'.': "c-ok", 's': "c-s", 'x': "c-x", 'p': "c-p", '-': "c-n"}
-	text := map[byte]string{'.': "antwortet", 's': "langsam", 'x': "keine Antwort", 'p': "keine Antwort, aber anderes Protokoll ok (möglicher Fehlalarm)", '-': "nicht gemessen"}
+	state := map[byte]string{'.': "c-ok", 's': "c-s", 'x': "c-x", 'p': "c-p", 'd': "c-d", '-': "c-n"}
+	text := map[byte]string{'.': "antwortet", 's': "langsam", 'x': "keine Antwort", 'p': "keine Antwort, aber anderes Protokoll ok (möglicher Fehlalarm)", 'd': "dauerhaft ohne Antwort (nicht gewertet)", '-': "nicht gemessen"}
 	fmt.Fprintf(b, `<tr><td class="lbl">%s</td>`, template.HTMLEscapeString(s.Label))
 	for i := 0; i < len(s.States) && i < len(in.Columns); i++ {
 		c := s.States[i]

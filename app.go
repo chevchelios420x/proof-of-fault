@@ -79,6 +79,14 @@ func (a *App) SaveSettings(cfg config.Settings) (config.Settings, error) {
 // DefaultSettings returns the factory settings (for "reset").
 func (a *App) DefaultSettings() config.Settings { return config.Defaults() }
 
+// SetSessionNote stores the comment of a session.
+func (a *App) SetSessionNote(id int64, note string) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.store.SetSessionNote(id, note)
+}
+
 // DeleteSession removes a stored measurement (not the running one).
 func (a *App) DeleteSession(id int64) error {
 	if err := a.ready(); err != nil {

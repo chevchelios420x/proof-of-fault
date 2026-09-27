@@ -134,6 +134,7 @@ func Open(path string) (*Store, error) {
 	// Migrations for databases of older versions (errors = column exists).
 	db.Exec(`ALTER TABLE custom_point ADD COLUMN tcp INTEGER NOT NULL DEFAULT 0`)
 	db.Exec(`ALTER TABLE custom_point ADD COLUMN port INTEGER NOT NULL DEFAULT 443`)
+	db.Exec(`ALTER TABLE session ADD COLUMN note TEXT NOT NULL DEFAULT ''`)
 	seedCustomPoints(db)
 	s := &Store{db: db, stop: make(chan struct{}), done: make(chan struct{})}
 	go s.flushLoop()
@@ -249,11 +250,18 @@ type SessionInfo struct {
 	StartedAt int64  `json:"startedAt"` // unix ms
 	EndedAt   int64  `json:"endedAt"`   // unix ms, 0 = running/aborted
 	HostInfo  string `json:"hostInfo"`
+	Note      string `json:"note"` // user comment, e.g. to compare measurements
+}
+
+// SetSessionNote stores the user comment of a session.
+func (s *Store) SetSessionNote(id int64, note string) error {
+	_, err := s.db.Exec(`UPDATE session SET note=? WHERE id=?`, note, id)
+	return err
 }
 
 // Sessions lists sessions, newest first.
 func (s *Store) Sessions() ([]SessionInfo, error) {
-	rows, err := s.db.Query(`SELECT id, target, target_ip, started_ns, COALESCE(ended_ns,0), COALESCE(host_info,'') FROM session ORDER BY id DESC`)
+	rows, err := s.db.Query(`SELECT id, target, target_ip, started_ns, COALESCE(ended_ns,0), COALESCE(host_info,''), COALESCE(note,'') FROM session ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +270,7 @@ func (s *Store) Sessions() ([]SessionInfo, error) {
 	for rows.Next() {
 		var x SessionInfo
 		var st, en int64
-		if err := rows.Scan(&x.ID, &x.Target, &x.TargetIP, &st, &en, &x.HostInfo); err != nil {
+		if err := rows.Scan(&x.ID, &x.Target, &x.TargetIP, &st, &en, &x.HostInfo, &x.Note); err != nil {
 			return nil, err
 		}
 		x.StartedAt = st / 1e6

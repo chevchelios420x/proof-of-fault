@@ -6,6 +6,24 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.16.0 – 2026-09-27
+
+- **Störungen werden geteilt, wenn sich ihre Art ändert**: Wechselt eine Störung
+  z. B. von „nur Hauptziel“ zu „Anbieter-Zugang“ und bleibt das mindestens 3 s
+  so, endet die bisherige Störung und eine neue beginnt (mit Vorlauf). Echte
+  Ausfälle verschwinden so nicht mehr in einer langen Störung anderer Art.
+- **Dauerhaft gestörte Messpunkte**: Antwortet ein manueller Messpunkt länger als
+  2 Minuten gar nicht (z. B. Ping gefiltert, Server aus), wird er als „dauerhaft
+  gestört“ geführt (Matrix: dunkelrot), einmal im Ereignisprotokoll vermerkt und
+  hält keine Störungen mehr offen. Antwortet er wieder, gibt es den Eintrag
+  „wieder erreichbar“.
+- **Kommentar pro Messung**: frei editierbares Textfeld im Verlauf (und für die
+  laufende Messung oben neben Start/Stop), z. B. „per LAN-Kabel“ oder „nach
+  Router-Tausch“. Erscheint in der Sitzungsliste und im HTML-Bericht – so lassen
+  sich mehrere Auswertungen vergleichen.
+- Fehlerbehebung: „Läuft seit …“ zeigt die richtige Dauer, wenn die App bei
+  bereits laufender Messung geöffnet wird (z. B. automatisches Fortsetzen).
+
 ## v0.15.0 – 2026-09-27
 
 - **„Möglicher Fehlalarm“**: Widersprechen sich Ping und TCP-Check desselben

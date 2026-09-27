@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession, SetSessionNote } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
@@ -38,6 +38,19 @@
     applyTheme(settings.theme)
     liveWindow = settings.defaultWindowMin
   }
+  let noteSaved = null
+  async function saveNote(id, note) {
+    try {
+      await SetSessionNote(id, note)
+      sessions = sessions.map((x) => (x.id === id ? { ...x, note } : x))
+      if (sessionData?.report?.session?.id === id) sessionData.report.session.note = note
+      if (status.sessionId === id) liveNote = note
+      noteSaved = id
+      setTimeout(() => (noteSaved = null), 2000)
+    } catch (e) { error = String(e) }
+  }
+  let liveNote = ''
+
   async function removeSession(id) {
     if (!confirm('Diese Messung mit allen Daten endgültig löschen?')) return
     try {
@@ -163,6 +176,13 @@
       liveWindow = settings.defaultWindowMin
     } catch {}
     status = await GetStatus()
+    if (status.sessionId) {
+      try {
+        const cur = ((await ListSessions()) || []).find((x) => x.id === status.sessionId)
+        liveNote = cur?.note || ''
+        if (cur?.startedAt) startedAt = cur.startedAt // e.g. auto-started before the window opened
+      } catch {}
+    }
     if (status.target) target = status.target
     if (status.state === 'error') error = status.message
     EventsOn('status', (s) => {
@@ -202,7 +222,7 @@
     error = ''
     localStorage.setItem('target', target)
     live.reset(); liveVersion++
-    stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null; liveIncidents = []; realLoss = {}
+    stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null; liveIncidents = []; realLoss = {}; liveNote = ''
     startedAt = Date.now()
     try { await StartMonitoring(target.trim()) } catch (e) { error = String(e) }
   }
@@ -256,6 +276,12 @@
         <button class="danger" on:click={stop}>Überwachung stoppen</button>
       {:else}
         <button class="primary" on:click={start}>Überwachung starten</button><Help text={HELP.start} />
+      {/if}
+      {#if status.sessionId && running}
+        <label class="notebox livenote">
+          <span>Kommentar zur laufenden Messung<Help align="left" text={HELP.note} /></span>
+          <textarea rows="1" value={liveNote} placeholder="z. B. „per LAN-Kabel“, „Router neu gestartet“ …" on:change={(e) => saveNote(status.sessionId, e.target.value)}></textarea>
+        </label>
       {/if}
       <span class="state">
         {#if status.state === 'resolving'}Löse Namen auf …
@@ -422,6 +448,7 @@
         {#each sessions as s}
           <button class="session" class:active={s.id === selected} on:click={() => select(s.id)}>
             #{s.id} {s.target}<br /><small>{fmtTime(s.startedAt)}</small>
+            {#if s.note}<br /><small class="snote" title={s.note}>📝 {s.note.split('\n')[0]}</small>{/if}
           </button>
         {:else}<p class="muted">Noch keine Messungen.</p>{/each}
       </aside>
@@ -439,6 +466,12 @@
               </span>
             </div>
             <p>{fmtTime(r.session.startedAt)} – {fmtTime(r.session.endedAt)} · Dauer {fmtDur(r.durationSec)} · {r.pathChanges} Routenwechsel</p>
+            <label class="notebox">
+              <span>Kommentar / Beschreibung<Help align="left" text={HELP.note} /></span>
+              <textarea rows="2" value={r.session.note || ''} placeholder="z. B. „per LAN-Kabel“, „nach Router-Tausch“, „Techniker war da“ …"
+                on:change={(e) => saveNote(r.session.id, e.target.value)}></textarea>
+              {#if noteSaved === r.session.id}<small class="muted">gespeichert</small>{/if}
+            </label>
             <Diagnosis d={r.diagnosis} />
             {#if exportMsg}<p class="muted">{exportMsg}</p>{/if}
           </section>
@@ -487,6 +520,10 @@
   nav .gear { order: 3; font-size: 18px; padding: 2px 10px; margin-left: 8px; }
   nav .gear:hover { color: #fff; }
   .del-session { padding: 6px 10px; }
+  .notebox { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .notebox textarea { font: inherit; font-size: 13px; color: var(--fg); background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; resize: vertical; }
+  .snote { color: var(--muted); display: inline-block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+  .livenote { flex: 1 1 260px; }
   main { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; max-width: 100vw; box-sizing: border-box; }
   main > :global(*) { min-width: 0; }
   main :global(.card) { min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }

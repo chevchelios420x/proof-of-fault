@@ -8,6 +8,7 @@
   const KIND = {
     session: 'Messung', path: 'Route', path_change: 'Routenwechsel', zones: 'Zonen',
     loss: 'Verlust', loss_hop: 'harmlos', spike: 'Latenzspitze', outage_start: 'AUSFALL', outage_end: 'Ausfall Ende',
+    loss_device: 'Messpunkt', persistent: 'dauerhaft gestört', persistent_end: 'wieder erreichbar',
   }
   const t = (ms) => (ms ? new Date(ms).toLocaleTimeString('de-DE') : '')
   const d = (ms) => new Date(ms).toLocaleDateString('de-DE')

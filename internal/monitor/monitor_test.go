@@ -224,3 +224,49 @@ func TestPingTCPDisagreement(t *testing.T) {
 		}
 	}
 }
+
+func TestIncidentSplitAndPersistent(t *testing.T) {
+	order := []series{
+		{key: "LAN", ttl: 1, zone: path.LAN},
+		{key: "ISP_EDGE", ttl: 2, zone: path.ISPEdge},
+		{key: "WAN", ttl: targetTTL, zone: path.WAN},
+	}
+	alt := series{key: DevKey("9.9.9.9"), zone: path.WAN, label: "Quad9"}
+	dead := series{key: DevKey("1.1.1.1"), zone: path.WAN, label: "CF (ping gefiltert)"}
+	r := newTestRunner(t)
+	ms := time.Millisecond
+	seq := 0
+	run := func(n int, isp, wan, a time.Duration) {
+		for i := 0; i < n; i++ {
+			seq++
+			r.seq = seq
+			r.finishTick(&tick{seq: seq, at: time.Now(), order: order, custom: []series{alt, dead},
+				result: map[string]time.Duration{"LAN": ms, "ISP_EDGE": isp, "WAN": wan, alt.key: a, dead.key: -1}})
+		}
+	}
+	run(persistentAfter+10, 10*ms, 20*ms, 15*ms) // dead point becomes permanent
+	run(5, 10*ms, -1, 15*ms)                     // only main target → "target"
+	run(5, -1, -1, -1)                           // provider access down → split
+	run(10, 10*ms, 20*ms, 15*ms)
+	r.closeIncident()
+	ins, _ := r.m.store.Incidents(r.sid)
+	var classes []string
+	for _, in := range ins {
+		classes = append(classes, in.Class)
+	}
+	// First the dead point is an ordinary "backup target down" incident
+	// until it counts as permanent (then that incident ends); afterwards the
+	// real disruptions are separate incidents of their own class.
+	if len(ins) != 3 || ins[0].Class != ClassAlt || ins[0].Seconds > persistentAfter ||
+		ins[1].Class != ClassTarget || ins[1].Seconds != 5 || ins[2].Class != ClassISP || ins[2].Seconds != 5 {
+		t.Fatalf("want [alt target isp] with 5 s each for the last two, got %v %+v", classes, ins)
+	}
+	evs, _ := r.m.store.Events(r.sid)
+	found := false
+	for _, e := range evs {
+		found = found || e.Kind == KindPersistent
+	}
+	if !found {
+		t.Fatal("missing persistent event")
+	}
+}

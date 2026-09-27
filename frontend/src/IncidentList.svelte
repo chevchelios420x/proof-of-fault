@@ -8,8 +8,8 @@
     lan: 'Heimnetz', isp: 'Anbieter-Zugang', isp_core: 'Anbieter-Netz/Internet',
     target: 'nur Hauptziel', alt: 'nur Ausweichziel', device: 'nur Einzel-Messpunkt',
   }
-  const STATE = { '.': 'antwortet', s: 'langsam', x: 'keine Antwort', p: 'keine Antwort, aber das andere Protokoll (Ping/TCP) kam durch – möglicher Fehlalarm, zählt als erreichbar', '-': 'nicht gemessen' }
-  const CELL = { '.': 'ok', s: 'slow', x: 'lost', p: 'maybe', '-': 'none' }
+  const STATE = { '.': 'antwortet', s: 'langsam', x: 'keine Antwort', d: 'dauerhaft ohne Antwort (> 2 min) – wird nicht gewertet und hält keine Störung offen', p: 'keine Antwort, aber das andere Protokoll (Ping/TCP) kam durch – möglicher Fehlalarm, zählt als erreichbar', '-': 'nicht gemessen' }
+  const CELL = { '.': 'ok', s: 'slow', x: 'lost', p: 'maybe', d: 'dead', '-': 'none' }
   const t = (ms) => new Date(ms).toLocaleTimeString('de-DE')
   const dt = (ms) => new Date(ms).toLocaleString('de-DE')
 
@@ -36,6 +36,7 @@
   <span class="legend">
     <i class="cell ok"></i> antwortet <i class="cell slow"></i> langsam <i class="cell lost"></i> keine Antwort
     <i class="cell maybe"></i> möglicher Fehlalarm
+    <i class="cell dead"></i> dauerhaft weg
     <i class="cell none"></i> nicht gemessen · blasse Spalten = 10 s davor / 5 s danach
   </span>
 </div>
@@ -107,6 +108,7 @@
   .slow { background: #f4a261; }
   .lost { background: #d62828; }
   .none { background: var(--none-cell); }
+  .dead { background: #5a3a3a; }
   .maybe { background: repeating-linear-gradient(45deg, #9b8ec7 0 3px, #d8d0f0 3px 6px); }
   .mayben { color: #9b8ec7; font-style: normal; font-size: 11px; margin-left: 6px; }
   .pre { opacity: 0.4; }
