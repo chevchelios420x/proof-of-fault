@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"net/netip"
 	"path/filepath"
 	"testing"
 	"time"
@@ -268,5 +269,22 @@ func TestIncidentSplitAndPersistent(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("missing persistent event")
+	}
+}
+
+func TestAcceptPath(t *testing.T) {
+	dst := netip.MustParseAddr("1.1.1.1")
+	full := []path.Hop{{TTL: 1, Addr: "192.168.69.5", Responsive: true}, {TTL: 2, Addr: "192.168.0.1", Responsive: true},
+		{TTL: 3, Addr: "188.195.66.254", Responsive: true}, {TTL: 4, Addr: "1.1.1.1", Responsive: true}}
+	cut := full[:2] // traced during an outage
+	other := []path.Hop{full[0], full[1], {TTL: 3, Addr: "188.1.1.1", Responsive: true}, full[3]}
+	if acceptPath(full, cut, dst) {
+		t.Error("truncated path must not replace a complete one")
+	}
+	if !acceptPath(full, other, dst) {
+		t.Error("real route change must be accepted")
+	}
+	if !acceptPath(nil, cut, dst) {
+		t.Error("first path is always accepted")
 	}
 }

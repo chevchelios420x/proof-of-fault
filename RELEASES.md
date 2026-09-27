@@ -6,6 +6,19 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.16.1 – 2026-09-27
+
+- Fehlerbehebung: Bei Beginn eines Ausfalls wird die Route neu geprüft. Während
+  des Ausfalls endet der Traceroute aber früh (hinter der Störung antwortet
+  nichts); diese abgeschnittene Route wurde übernommen und dabei der
+  ISP_EDGE-Messpunkt entfernt – genau in der Störung fehlte er dann in der
+  Auswertung. Unvollständige Routen ersetzen eine vollständige jetzt nicht mehr
+  (Eintrag „Route unvollständig ermittelt – bisherige Route bleibt“); echte
+  Routenwechsel werden weiterhin übernommen. Das reduziert auch falsche
+  „Routenwechsel“-Meldungen.
+- Wurde der Anbieter-Zugang in einer Störung nicht gemessen, sagt der Titel das
+  jetzt („Anbieter-Zugang wurde nicht gemessen“) statt „antwortete noch“.
+
 ## v0.16.0 – 2026-09-27
 
 - **Störungen werden geteilt, wenn sich ihre Art ändert**: Wechselt eine Störung

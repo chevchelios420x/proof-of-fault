@@ -387,6 +387,13 @@ func describeIncident(in store.Incident) (title, detail string) {
 		title = "Anbieter-Zugang gestört: Heimnetz OK, keine Antwort von " + in.Origin
 	case ClassISPCore:
 		title = "Kein Internet: alle Ziele weg, Anbieter-Zugang antwortete noch"
+		measured := false
+		for _, s := range in.Series {
+			measured = measured || s.Zone == string(path.ISPEdge)
+		}
+		if !measured {
+			title = "Kein Internet: alle Ziele weg, Heimnetz OK (Anbieter-Zugang wurde nicht gemessen)"
+		}
 	case ClassTarget:
 		title = "Nur das Hauptziel war weg – Ausweichziele erreichbar"
 	case ClassAlt:

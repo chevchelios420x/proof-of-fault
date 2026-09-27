@@ -865,6 +865,15 @@ func (r *runner) updatePath(ctx context.Context, hops []path.Hop) {
 		return
 	}
 	path.Classify(hops, r.m.overrides())
+	if !acceptPath(r.hops, hops, r.dst) {
+		// Typical during an outage: nothing behind the broken spot answers,
+		// so the trace ends early. Adopting it would drop measuring points
+		// (e.g. ISP_EDGE) exactly when they matter; keep the known path.
+		r.logEvent(store.Event{Kind: KindPath, Severity: "info", Title: "Route unvollständig ermittelt – bisherige Route bleibt",
+			Detail: "Der Traceroute kam nur bis " + describePath(hops, r.names) + " (vermutlich wegen der laufenden Störung). " +
+				"Die Messpunkte bleiben unverändert: " + repsText(r.reps) + "."})
+		return
+	}
 	old, oldReps := r.hops, r.reps
 	r.hops = hops
 	r.reps = path.Representatives(ctx, r.m.prober, hops, r.dst)
@@ -900,4 +909,27 @@ func samePath(a, b []path.Hop) bool {
 		}
 	}
 	return true
+}
+
+// acceptPath decides whether a newly traced path replaces the current one.
+// A path that reaches the target always does; one that ends early only if
+// the current one did not reach the target either and the new one is not
+// shorter (the target may simply not answer traceroutes).
+func acceptPath(cur, next []path.Hop, dst netip.Addr) bool {
+	reaches := func(hs []path.Hop) bool {
+		return len(hs) > 0 && hs[len(hs)-1].Addr == dst.String()
+	}
+	responsive := func(hs []path.Hop) int {
+		n := 0
+		for _, h := range hs {
+			if h.Responsive {
+				n++
+			}
+		}
+		return n
+	}
+	if len(cur) == 0 || reaches(next) {
+		return true
+	}
+	return !reaches(cur) && responsive(next) >= responsive(cur)
 }
