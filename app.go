@@ -87,6 +87,14 @@ func (a *App) SetHopWatched(addr string, on bool) error {
 	return nil
 }
 
+// SetHopName sets an optional label for a hop, shown in chart and report.
+func (a *App) SetHopName(addr, name string) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.monitor.SetHopName(addr, name)
+}
+
 // SetHopZone assigns a zone to a hop (remembered per hop address); an empty
 // zone restores the automatic classification.
 func (a *App) SetHopZone(addr, zone string) error {

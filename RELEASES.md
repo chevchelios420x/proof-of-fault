@@ -6,6 +6,21 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.3.0 – 2026-09-27
+
+- Live-Diagramm und Route-Tabelle passen zusammen: eine Linie pro Tabellenzeile,
+  in Routen-Reihenfolge (TTL), mit derselben Farbe wie der Punkt in der Tabelle.
+  Zonen-Messpunkte behalten ihre Zonenfarbe, alle anderen Hops bekommen eine
+  eindeutige Farbe (keine doppelten Grautöne mehr).
+- Checkbox „Diagramm“ = Linie sichtbar. Sie funktioniert jetzt auch für
+  Zonen-Messpunkte (vorher gesperrt) und bleibt mit der Legende synchron: Ein- und
+  Ausblenden über die Legende ändert die Checkbox und umgekehrt.
+- Hops lassen sich optional benennen (Spalte „Name“). Der Name wird pro Adresse
+  gespeichert und erscheint in der Diagramm-Legende („Hop 2 · Heimrouter (LAN)“),
+  im Verlauf und im HTML-Bericht.
+- Die Auswahl der angehakten Hops wird jetzt in der Datenbank gespeichert und
+  übersteht damit auch Versionswechsel.
+
 ## v0.2.1 – 2026-09-27
 
 - Live-Latenzverlauf bleibt stehen, solange die Maus über dem Diagramm ist

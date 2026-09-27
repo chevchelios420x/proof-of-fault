@@ -68,6 +68,10 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 	}
 	hopsJSON, _ := st.LatestPath(id)
 	json.Unmarshal([]byte(hopsJSON), &rep.Hops)
+	names := st.HopNames()
+	for i := range rep.Hops {
+		rep.Hops[i].Name = names[rep.Hops[i].Addr]
+	}
 	rep.PathChanges, _ = st.PathChanges(id)
 
 	rep.Session = info

@@ -30,7 +30,8 @@ type Hop struct {
 	Responsive bool    `json:"responsive"`
 	RTTMs      float64 `json:"rttMs"`
 	Zone       Zone    `json:"zone"`
-	Manual     bool    `json:"manual"` // zone set by the user
+	Manual     bool    `json:"manual"`         // zone set by the user
+	Name       string  `json:"name,omitempty"` // optional user label (reports)
 }
 
 // ValidZone reports whether z is one of the three zones.

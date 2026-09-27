@@ -18,7 +18,7 @@ Status: **Windows** (IPv4). Linux/macOS folgen (siehe `internal/probe`).
 
 ## Benutzung (Windows)
 
-Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.2.1.exe`](build/bin/proof-of-fault-v0.2.1.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
+Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.3.0.exe`](build/bin/proof-of-fault-v0.3.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
 
 1. `proof-of-fault.exe` starten. Es sind keine Admin-Rechte und keine Installation
    nötig; die WebView2-Runtime ist bei Windows 10/11 vorhanden.
@@ -26,7 +26,8 @@ Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.2.1.exe`](bui
 3. In der Route-Tabelle kann jeder Hop per Häkchen als eigene Linie in den
    Latenzverlauf aufgenommen werden. Die Zone jedes Hops lässt sich per Auswahlfeld
    korrigieren (z. B. ein privates `10.x`-Transfernetz des Providers → `ISP_EDGE`).
-   Die Zonenwahl wird pro Hop-Adresse dauerhaft gespeichert.
+   Zusätzlich kann jeder Hop einen eigenen Namen bekommen (erscheint in Legende und
+   Bericht). Zone, Name und Häkchen werden pro Hop-Adresse dauerhaft gespeichert.
 4. Laufen lassen, bis die Störung auftritt. Messdaten landen in
    `%AppData%\proof-of-fault\data.db` (siehe [Wo liegen die Daten?](#wo-liegen-die-daten)).
 5. **Verlauf & Berichte** → Sitzung wählen → **Bericht (HTML/PDF)** oder
@@ -50,7 +51,8 @@ einfach `%AppData%\proof-of-fault` in die Adresszeile eingeben).
 
 **Inhalt:** alle Messsitzungen (Ziel, Start/Ende), jede einzelne Messung
 (Zeitpunkt, Zone bzw. Hop, Latenz oder Verlust), erkannte Ausfälle, die ermittelte
-Route samt Routenwechseln und die manuell gewählten Zonen pro Hop.
+Route samt Routenwechseln sowie pro Hop die gewählte Zone, der Name und ob er im
+Diagramm angezeigt wird.
 
 **Dateien:** Während die App läuft, liegen daneben `data.db-wal` und `data.db-shm`
 (SQLite-WAL-Modus: neue Messwerte stehen zuerst in der `-wal`-Datei). Zum Sichern
@@ -62,7 +64,7 @@ etwa ein Drittel mehr (Schätzung).
 **Nicht in der Datenbank:**
 
 - Exporte (HTML-Bericht, CSV) landen dort, wo du sie im Speichern-Dialog ablegst.
-- Oberflächen-Einstellungen (zuletzt eingegebenes Ziel, angehakte Hops) speichert
+- Oberflächen-Einstellungen (zuletzt eingegebenes Ziel, ausgeblendete Linien) speichert
   die WebView2-Komponente in einem eigenen Profilordner, vermutlich
   `%AppData%\proof-of-fault-vX.Y.Z.exe\EBWebView`. Er hängt am EXE-Namen, deshalb
   gehen diese Einstellungen bei einer neuen Version verloren. Messdaten und

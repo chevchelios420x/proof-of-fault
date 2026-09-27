@@ -49,6 +49,7 @@ type Status struct {
 	Reps      []path.Representative `json:"reps"`
 	Hops      []path.Hop            `json:"hops"`
 	Watched   []string              `json:"watched"` // hop addresses probed individually
+	Names     map[string]string     `json:"names"`   // user labels by hop address
 }
 
 // HopKey is the series key used for individually watched hops.
@@ -84,7 +85,15 @@ type Monitor struct {
 
 // New creates a monitor.
 func New(p probe.Prober, s *store.Store, emit Emitter) *Monitor {
-	return &Monitor{prober: p, store: s, emit: emit, status: Status{State: "idle"}, watched: map[string]bool{}}
+	m := &Monitor{prober: p, store: s, emit: emit, watched: map[string]bool{}}
+	prefs, _ := s.HopPrefs()
+	for a, p := range prefs {
+		if p.Watched {
+			m.watched[a] = true
+		}
+	}
+	m.status = Status{State: "idle", Watched: m.watchedList(), Names: s.HopNames()}
+	return m
 }
 
 // Status returns the current status.
@@ -113,7 +122,7 @@ func (m *Monitor) Start(target string) error {
 	m.cancel = cancel
 	m.done = make(chan struct{})
 	m.cmds = make(chan func(*runner), 16)
-	m.status = Status{State: "resolving", Target: target, Watched: m.watchedList()}
+	m.status = Status{State: "resolving", Target: target, Watched: m.watchedList(), Names: m.store.HopNames()}
 	m.mu.Unlock()
 
 	go func() {
@@ -166,6 +175,7 @@ func (m *Monitor) overrides() map[string]path.Zone {
 
 // SetHopWatched adds or removes a hop from individual probing (chart line).
 func (m *Monitor) SetHopWatched(addr string, on bool) {
+	m.store.SetHopWatched(addr, on)
 	m.mu.Lock()
 	if on {
 		m.watched[addr] = true
@@ -176,6 +186,16 @@ func (m *Monitor) SetHopWatched(addr string, on bool) {
 	m.mu.Unlock()
 	m.send(func(r *runner) { r.syncWatched() })
 	m.setStatus(func(*Status) {})
+}
+
+// SetHopName stores a user label for a hop ("" removes it).
+func (m *Monitor) SetHopName(addr, name string) error {
+	if err := m.store.SetHopName(addr, strings.TrimSpace(name)); err != nil {
+		return err
+	}
+	names := m.store.HopNames()
+	m.setStatus(func(s *Status) { s.Names = names })
+	return nil
 }
 
 // SetHopZone stores a user zone for a hop address (remembered permanently;

@@ -1,10 +1,10 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, GetVersion } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import { Timeline } from './timeline.js'
-  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, seriesColor } from './zones.js'
+  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, hopColor, buildSeries } from './zones.js'
 
   let tab = 'live'
   let version = ''
@@ -29,21 +29,41 @@
 
   $: running = ['resolving', 'discovering', 'running'].includes(status.state)
   $: watched = status.watched || []
+  $: names = status.names || {}
   $: liveZones = (status.reps || []).map((r) => r.zone)
-  // Hops that are measured as zone representative already appear as zone line.
+  // Hops that are zone measuring points appear as zone line.
   $: repZoneByAddr = Object.fromEntries((status.reps || []).map((r) => [r.ip, r.zone]))
-  $: liveKeys = [...liveZones, ...(status.hops || []).filter((h) => h.responsive && !repZoneByAddr[h.addr] && watched.includes(h.addr)).map((h) => hopKey(h.addr))]
+  // One chart line per route row, in route order, same color and label as the table.
+  $: liveSeries = buildSeries({ hops: status.hops || [], reps: status.reps || [], watched, names })
 
-  function loadWatched() {
-    try { return JSON.parse(localStorage.getItem('watchedHops') || '[]') } catch { return [] }
+  // Series keys hidden in the live chart (legend or table checkbox).
+  let hidden = new Set(loadHidden())
+  function loadHidden() {
+    try { return JSON.parse(localStorage.getItem('hiddenSeries') || '[]') } catch { return [] }
+  }
+  function setHidden(key, hide) {
+    hide ? hidden.add(key) : hidden.delete(key)
+    hidden = new Set(hidden)
+    try { localStorage.setItem('hiddenSeries', JSON.stringify([...hidden])) } catch {}
   }
 
-  async function toggleHop(addr, on) {
-    const w = new Set(loadWatched())
-    on ? w.add(addr) : w.delete(addr)
-    localStorage.setItem('watchedHops', JSON.stringify([...w]))
-    try { await SetHopWatched(addr, on) } catch (e) { error = String(e) }
+  // Table checkbox = "line visible in the chart". Hops that are no zone
+  // measuring point are probed only while their checkbox is on.
+  async function toggleRow(h, on) {
+    const zone = repZoneByAddr[h.addr]
+    if (zone) return setHidden(zone, !on)
+    setHidden(hopKey(h.addr), false)
+    try { await SetHopWatched(h.addr, on) } catch (e) { error = String(e) }
   }
+  const rowKey = (h) => repZoneByAddr[h.addr] || hopKey(h.addr)
+  const rowChecked = (h, watched, hidden) =>
+    !hidden.has(rowKey(h)) && (!!repZoneByAddr[h.addr] || watched.includes(h.addr))
+
+  async function rename(addr, name) {
+    try { await SetHopName(addr, name) } catch (e) { error = String(e) }
+  }
+
+  let histHidden = new Set()
 
   async function changeZone(addr, zone) {
     try { await SetHopZone(addr, zone === 'auto' ? '' : zone) } catch (e) { error = String(e) }
@@ -52,8 +72,6 @@
   onMount(async () => {
     version = await GetVersion()
     status = await GetStatus()
-    // Restore the remembered hop selection (backend keeps it only in memory).
-    for (const a of loadWatched()) if (!(status.watched || []).includes(a)) await SetHopWatched(a, true)
     if (status.state === 'error') error = status.message
     EventsOn('status', (s) => {
       status = s
@@ -176,7 +194,7 @@
 
       <section class="card">
         <h2>Latenzverlauf (live)</h2>
-        <Chart live timeline={live} zones={liveKeys} hops={status.hops || []} version={liveVersion} />
+        <Chart live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
       </section>
 
       <div class="two">
@@ -194,11 +212,19 @@
         <section class="card">
           <h2>Route</h2>
           <table class="route">
-            <tr><th>TTL</th><th>Adresse</th><th>Zone</th><th>RTT</th><th title="Eigene Latenzlinie im Diagramm">Diagramm</th></tr>
+            <tr><th>TTL</th><th>Adresse</th><th>Name</th><th>Zone</th><th>RTT</th><th title="Linie im Diagramm anzeigen">Diagramm</th></tr>
             {#each status.hops || [] as h}
               <tr>
                 <td>{h.ttl}</td>
                 <td>{h.responsive ? h.addr : '* (filtert ICMP – kein Fehler)'}</td>
+                <td>
+                  {#if h.responsive}
+                    <input class="name" value={names[h.addr] || ''} placeholder="optional"
+                      on:change={(e) => rename(h.addr, e.target.value)}
+                      on:keydown={(e) => e.key === 'Enter' && e.target.blur()}
+                      title="Eigener Name für diesen Hop (wird pro Adresse gespeichert, erscheint im Diagramm und Bericht)" />
+                  {/if}
+                </td>
                 <td>
                   {#if h.responsive}
                     <select style="color:{ZONE_COLOR[h.zone]}" value={h.manual ? h.zone : 'auto'}
@@ -211,15 +237,10 @@
                 </td>
                 <td>{h.responsive ? fmt(h.rttMs) + ' ms' : ''}</td>
                 <td>
-                  {#if repZoneByAddr[h.addr]}
-                    <label class="toggle" title="Wird bereits als Zone {repZoneByAddr[h.addr]} gemessen und angezeigt (Ein-/Ausblenden über die Legende).">
-                      <input type="checkbox" checked disabled />
-                      <span class="dot" style="background:{ZONE_COLOR[repZoneByAddr[h.addr]]}"></span>
-                    </label>
-                  {:else if h.responsive}
-                    <label class="toggle">
-                      <input type="checkbox" checked={watched.includes(h.addr)} on:change={(e) => toggleHop(h.addr, e.target.checked)} />
-                      <span class="dot" style="background:{seriesColor(hopKey(h.addr))}"></span>
+                  {#if h.responsive}
+                    <label class="toggle" title={repZoneByAddr[h.addr] ? `Messpunkt der Zone ${repZoneByAddr[h.addr]}` : 'Eigene Linie im Diagramm (wird nur gemessen, solange aktiv)'}>
+                      <input type="checkbox" checked={rowChecked(h, watched, hidden)} on:change={(e) => toggleRow(h, e.target.checked)} />
+                      <span class="dot" style="background:{hopColor(h.ttl, repZoneByAddr[h.addr])}"></span>
                     </label>
                   {/if}
                 </td>
@@ -269,7 +290,8 @@
           </section>
           <section class="card">
             <h2>Latenzverlauf</h2>
-            <Chart timeline={hist} zones={(sessionData.series || []).map((x) => x.zone)} hops={r.hops || []} version={histVersion} />
+            <Chart timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone) })}
+              hidden={histHidden} onToggle={(k, show) => { show ? histHidden.delete(k) : histHidden.add(k); histHidden = new Set(histHidden) }} version={histVersion} />
           </section>
           <section class="card">
             <h2>Ausfälle</h2>
@@ -314,6 +336,7 @@
   .detail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
   .route select { padding: 2px 4px; font-size: 12px; }
+  .route .name { width: 130px; padding: 2px 6px; font-size: 12px; }
   .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .small { font-size: 12px; margin: 6px 0 0; }

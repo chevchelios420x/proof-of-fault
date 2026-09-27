@@ -12,23 +12,50 @@ export const fmtDur = (s) => {
   return (h ? h + 'h ' : '') + (h || m ? m + 'm ' : '') + sec + 's'
 }
 
-const HOP_PALETTE = ['#8e44ad', '#d4a017', '#16a085', '#c0392b', '#2980b9', '#7f8c8d', '#e67e22', '#27ae60', '#6c5ce7', '#b33771']
+// Distinct colors for individual hops; zone colors and greys are excluded so
+// every line is clearly tied to one row of the route table.
+const HOP_PALETTE = ['#8e44ad', '#d4a017', '#1f77b4', '#c2185b', '#17becf', '#8c564b', '#bcbd22', '#ff7f0e', '#6a3d9a', '#b15928', '#e377c2', '#2ca02c']
 
 export const hopKey = (addr) => 'hop:' + addr
 export const isHopKey = (k) => k.startsWith('hop:')
 
-// seriesColor gives zones their fixed color and hops a stable palette color.
-export function seriesColor(key) {
-  if (ZONE_COLOR[key]) return ZONE_COLOR[key]
-  let h = 0
-  for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0
-  return HOP_PALETTE[h % HOP_PALETTE.length]
+// hopColor: zone representatives use their zone color, other hops a palette
+// color by TTL (stable and unique along the path).
+export function hopColor(ttl, repZone) {
+  if (repZone) return ZONE_COLOR[repZone]
+  return HOP_PALETTE[(ttl - 1) % HOP_PALETTE.length]
 }
 
-// seriesLabel names a series; hops as "Hop <ttl> <addr>" when the TTL is known.
-export function seriesLabel(key, hops = []) {
-  if (!isHopKey(key)) return key
-  const addr = key.slice(4)
-  const h = hops.find((x) => x.addr === addr)
-  return h ? `Hop ${h.ttl} ${addr}` : addr
+// hopLabel: "Hop 2 · Heimrouter" (name) or "Hop 2 · 192.168.0.1", plus the
+// zone for zone measuring points.
+export function hopLabel(ttl, addr, name, repZone) {
+  const base = ttl ? `Hop ${ttl} · ${name || addr}` : name || addr
+  return repZone ? `${base} (${repZone})` : base
+}
+
+// buildSeries returns the chart series in route order (TTL). Zone
+// measuring points keep their zone key; other hops appear when watched.
+export function buildSeries({ hops = [], reps = [], watched = [], names = {}, keys = null }) {
+  const repZone = Object.fromEntries(reps.map((r) => [r.ip, r.zone]))
+  const out = []
+  const seen = new Set()
+  for (const h of hops) {
+    if (!h.responsive || seen.has(h.addr)) continue
+    seen.add(h.addr)
+    const rz = repZone[h.addr]
+    const key = rz || hopKey(h.addr)
+    if (keys ? !keys.includes(key) : !rz && !watched.includes(h.addr)) continue
+    out.push({ key, addr: h.addr, ttl: h.ttl, zone: rz, label: hopLabel(h.ttl, h.addr, names[h.addr], rz), color: hopColor(h.ttl, rz) })
+  }
+  // Series without a hop in the table (e.g. target that filters traceroute).
+  for (const r of reps) {
+    if (seen.has(r.ip) || (keys && !keys.includes(r.zone))) continue
+    out.push({ key: r.zone, addr: r.ip, ttl: 0, zone: r.zone, label: hopLabel(0, r.ip, names[r.ip], r.zone), color: ZONE_COLOR[r.zone] })
+  }
+  for (const k of keys || []) {
+    if (out.some((x) => x.key === k)) continue
+    const addr = isHopKey(k) ? k.slice(4) : k
+    out.push({ key: k, addr, ttl: 0, zone: isHopKey(k) ? '' : k, label: names[addr] || addr, color: ZONE_COLOR[k] || '#555' })
+  }
+  return out
 }

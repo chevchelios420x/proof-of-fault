@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS hop_zone (
 	addr TEXT PRIMARY KEY,
 	zone TEXT NOT NULL            -- user override, remembered across sessions
 );
+CREATE TABLE IF NOT EXISTS hop_pref (
+	addr    TEXT PRIMARY KEY,
+	name    TEXT NOT NULL DEFAULT '', -- optional user label
+	watched INTEGER NOT NULL DEFAULT 0 -- own line in the live chart
+);
 CREATE TABLE IF NOT EXISTS outage (
 	session_id INTEGER NOT NULL,
 	zone       TEXT NOT NULL,     -- zone the fault is attributed to
@@ -343,5 +348,54 @@ func (s *Store) SetHopZone(addr, zone string) error {
 		return err
 	}
 	_, err := s.db.Exec(`INSERT INTO hop_zone(addr, zone) VALUES(?,?) ON CONFLICT(addr) DO UPDATE SET zone=excluded.zone`, addr, zone)
+	return err
+}
+
+// HopPref holds per-hop user preferences.
+type HopPref struct {
+	Name    string
+	Watched bool
+}
+
+// HopPrefs returns the stored per-hop preferences by address.
+func (s *Store) HopPrefs() (map[string]HopPref, error) {
+	rows, err := s.db.Query(`SELECT addr, name, watched FROM hop_pref`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]HopPref{}
+	for rows.Next() {
+		var a string
+		var p HopPref
+		if err := rows.Scan(&a, &p.Name, &p.Watched); err != nil {
+			return nil, err
+		}
+		out[a] = p
+	}
+	return out, rows.Err()
+}
+
+// HopNames returns the user labels by hop address.
+func (s *Store) HopNames() map[string]string {
+	prefs, _ := s.HopPrefs()
+	out := map[string]string{}
+	for a, p := range prefs {
+		if p.Name != "" {
+			out[a] = p.Name
+		}
+	}
+	return out
+}
+
+// SetHopName stores a label for a hop ("" removes it).
+func (s *Store) SetHopName(addr, name string) error {
+	_, err := s.db.Exec(`INSERT INTO hop_pref(addr, name) VALUES(?,?) ON CONFLICT(addr) DO UPDATE SET name=excluded.name`, addr, name)
+	return err
+}
+
+// SetHopWatched stores whether a hop gets its own chart line.
+func (s *Store) SetHopWatched(addr string, on bool) error {
+	_, err := s.db.Exec(`INSERT INTO hop_pref(addr, watched) VALUES(?,?) ON CONFLICT(addr) DO UPDATE SET watched=excluded.watched`, addr, on)
 	return err
 }

@@ -137,8 +137,8 @@ small{color:#666}
 {{range .R.Zones}}{{$z := .Zone}}{{range .Peaks}}<tr><td>{{$z}}</td><td>{{ts .T}}</td><td>{{f1 .RTTMs}}</td></tr>{{end}}{{end}}</table>
 
 <h2>Route (Stand zuletzt, {{.R.PathChanges}} Routenwechsel)</h2>
-<table><tr><th>TTL</th><th>Adresse</th><th>Zone</th><th>RTT (ms)</th></tr>
-{{range .R.Hops}}<tr><td>{{.TTL}}</td><td>{{if .Responsive}}{{.Addr}}{{else}}* (antwortet nicht auf ICMP, kein Fehler){{end}}</td><td>{{.Zone}}</td><td>{{f1 .RTTMs}}</td></tr>{{end}}</table>
+<table><tr><th>TTL</th><th>Adresse</th><th>Name</th><th>Zone</th><th>RTT (ms)</th></tr>
+{{range .R.Hops}}<tr><td>{{.TTL}}</td><td>{{if .Responsive}}{{.Addr}}{{else}}* (antwortet nicht auf ICMP, kein Fehler){{end}}</td><td>{{.Name}}</td><td>{{.Zone}}</td><td>{{f1 .RTTMs}}</td></tr>{{end}}</table>
 
 <p><small>SHA-256 der Rohdaten (CSV-Zeilen): {{.R.DataSHA256}}<br>Erstellt mit proof-of-fault.</small></p>
 </body></html>`))
