@@ -13,6 +13,22 @@ type Spike struct {
 	AbsoluteMs float64 `json:"absoluteMs"`
 }
 
+// ZoneSounds selects which events of a zone play a sound.
+type ZoneSounds struct {
+	Spike  bool `json:"spike"`
+	Loss   bool `json:"loss"`
+	Outage bool `json:"outage"`
+}
+
+// Sounds configures acoustic signals.
+type Sounds struct {
+	Enabled     bool                  `json:"enabled"`
+	Volume      int                   `json:"volume"`      // 0..100
+	CooldownSec int                   `json:"cooldownSec"` // min. pause between equal signals
+	RouteChange bool                  `json:"routeChange"`
+	Zones       map[string]ZoneSounds `json:"zones"` // LAN, ISP_EDGE, WAN
+}
+
 // Settings are all user settings.
 type Settings struct {
 	Spikes           map[string]Spike `json:"spikes"`           // per zone: LAN, ISP_EDGE, WAN
@@ -28,6 +44,7 @@ type Settings struct {
 	RetentionDays    int              `json:"retentionDays"`    // delete older sessions (0 = keep)
 	Theme            string           `json:"theme"`            // auto | light | dark
 	DefaultWindowMin int              `json:"defaultWindowMin"` // live chart window
+	Sounds           Sounds           `json:"sounds"`
 }
 
 // Defaults returns the factory settings.
@@ -49,6 +66,14 @@ func Defaults() Settings {
 		RetentionDays:    0,
 		Theme:            "auto",
 		DefaultWindowMin: 30,
+		Sounds: Sounds{
+			Enabled: false, Volume: 60, CooldownSec: 10, RouteChange: true,
+			Zones: map[string]ZoneSounds{
+				"LAN":      {Outage: true},
+				"ISP_EDGE": {Loss: true, Outage: true},
+				"WAN":      {Loss: true, Outage: true},
+			},
+		},
 	}
 }
 
@@ -86,6 +111,20 @@ func (s Settings) Normalize() Settings {
 	}
 	if s.Theme != "light" && s.Theme != "dark" {
 		s.Theme = "auto"
+	}
+	if s.Sounds.Zones == nil {
+		s.Sounds.Zones = d.Sounds.Zones
+	}
+	for z, v := range d.Sounds.Zones {
+		if _, ok := s.Sounds.Zones[z]; !ok {
+			s.Sounds.Zones[z] = v
+		}
+	}
+	if s.Sounds.Volume < 0 || s.Sounds.Volume > 100 {
+		s.Sounds.Volume = d.Sounds.Volume
+	}
+	if s.Sounds.CooldownSec < 0 {
+		s.Sounds.CooldownSec = 0
 	}
 	if s.DefaultWindowMin < 0 {
 		s.DefaultWindowMin = d.DefaultWindowMin

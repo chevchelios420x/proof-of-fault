@@ -7,6 +7,7 @@
   import Diagnosis from './Diagnosis.svelte'
   import IncidentList from './IncidentList.svelte'
   import Settings from './Settings.svelte'
+  import { signalFor } from './sound.js'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap } from './zones.js'
   import Help from './Help.svelte'
@@ -170,6 +171,7 @@
       refreshDiag()
     })
     EventsOn('event', (e) => {
+      signalFor(e, settings?.sounds)
       liveEvents = [...liveEvents, e]
       refreshDiag()
     })

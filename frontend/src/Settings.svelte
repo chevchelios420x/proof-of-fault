@@ -1,5 +1,6 @@
 <script>
   import Help from './Help.svelte'
+  import { play } from './sound.js'
   export let settings // current settings (object)
   export let onSave = async (s) => {}
   export let onClose = () => {}
@@ -99,6 +100,40 @@
       </section>
 
       <section>
+        <h3>Signaltöne
+          <Help align="left" text={'Spielt einen Ton, wenn ein Ereignis eintritt – praktisch, wenn die App im Hintergrund läuft. Jede Art hat einen eigenen Klang (mit ▶ anhören). Verlust- und Spitzen-Töne kommen, sobald das Ereignis abgeschlossen ist (wenige Sekunden danach), Ausfall- und Routenwechsel-Töne sofort.'} />
+        </h3>
+        <label class="check"><input type="checkbox" bind:checked={s.sounds.enabled} /> Signaltöne aktivieren</label>
+        <div class:disabled={!s.sounds.enabled}>
+          <label class="check"><input type="checkbox" bind:checked={s.sounds.routeChange} /> bei Routenwechsel
+            <button class="play" title="anhören" on:click|preventDefault={() => play('route', s.sounds.volume)}>▶</button></label>
+          <table class="grid">
+            <tr>
+              <th></th>
+              <th>Latenzspitze <button class="play" title="anhören" on:click={() => play('spike', s.sounds.volume)}>▶</button></th>
+              <th>Paketverlust <button class="play" title="anhören" on:click={() => play('loss', s.sounds.volume)}>▶</button></th>
+              <th>Ausfall <button class="play" title="anhören" on:click={() => play('outage', s.sounds.volume)}>▶</button></th>
+            </tr>
+            {#each ZONES as [z, label]}
+              <tr>
+                <td>{label}</td>
+                <td class="c"><input type="checkbox" bind:checked={s.sounds.zones[z].spike} /></td>
+                <td class="c"><input type="checkbox" bind:checked={s.sounds.zones[z].loss} /></td>
+                <td class="c"><input type="checkbox" bind:checked={s.sounds.zones[z].outage} /></td>
+              </tr>
+            {/each}
+          </table>
+          <label class="row">Lautstärke
+            <span><input type="range" min="0" max="100" bind:value={s.sounds.volume} class="range" /> {s.sounds.volume} %</span>
+          </label>
+          <label class="row">Mindestens … Sekunden zwischen gleichen Tönen
+            <span><input type="number" min="0" max="3600" bind:value={s.sounds.cooldownSec} /><Help align="right" text="Verhindert Dauergepiepe bei vielen Ereignissen hintereinander: derselbe Ton für dieselbe Zone kommt höchstens einmal in diesem Zeitraum." /></span>
+          </label>
+          <p class="note">Die Zone ist die, der das Ereignis zugeordnet wurde (z. B. „Paketverlust ab Hop 3 [ISP_EDGE]“ → ISP_EDGE). Ausfälle manueller Messpunkte zählen als Paketverlust ihrer Zone.</p>
+        </div>
+      </section>
+
+      <section>
         <h3>Komfort</h3>
         <label class="check"><input type="checkbox" bind:checked={s.preventSleep} /> Standby verhindern, solange gemessen wird
           <Help align="left" text="Hält den PC während einer Messung wach (der Bildschirm darf trotzdem ausgehen). Sonst unterbricht der Energiesparmodus die Messung und es entstehen Lücken im Nachweis." /></label>
@@ -138,4 +173,8 @@
   .actions { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
   .grow { flex: 1; }
   .err { color: var(--bad); }
+  .disabled { opacity: 0.45; pointer-events: none; }
+  .play { padding: 0 6px; font-size: 10px; margin-left: 4px; }
+  .grid td.c { text-align: center; }
+  .range { width: 160px; padding: 0; vertical-align: middle; }
 </style>

@@ -6,6 +6,13 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.10.0 – 2026-09-27
+
+- **Signaltöne** (⚙ Einstellungen → „Signaltöne“): Ton bei Routenwechsel und pro
+  Zone (LAN / ISP_EDGE / WAN) einzeln wählbar bei Latenzspitze, Paketverlust und
+  Ausfall. Jede Art hat einen eigenen Klang (▶ zum Anhören), Lautstärke und
+  Mindestpause zwischen gleichen Tönen einstellbar. Standardmäßig aus.
+
 ## v0.9.0 – 2026-09-27
 
 - **Einstellungen (⚙ oben rechts)**, dauerhaft gespeichert und sofort wirksam:
