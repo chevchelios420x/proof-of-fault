@@ -1,4 +1,6 @@
 <script>
+  import Help from './Help.svelte'
+  import { HELP } from './help.js'
   export let events = []
   let showHarmless = false
   let showInfo = true
@@ -18,7 +20,7 @@
 </script>
 
 <div class="bar">
-  <label><input type="checkbox" bind:checked={showHarmless} /> harmlose Hop-Verluste ({harmless})</label>
+  <label><input type="checkbox" bind:checked={showHarmless} /> harmlose Hop-Verluste ({harmless})</label><Help text={HELP.harmless} />
   <label><input type="checkbox" bind:checked={showInfo} /> Infos (Start, Zonen)</label>
   <span class="muted">{shown.length} Einträge, neueste oben</span>
 </div>

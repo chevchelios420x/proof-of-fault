@@ -6,6 +6,23 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.7.0 – 2026-09-27
+
+- **Manuelle Messpunkte fließen in die Auswertung ihrer Zone ein**: LAN/ISP_EDGE-
+  Punkte gehören zu diesem Bereich (fällt z. B. die Fritz!Box zusammen mit allen
+  Zielen aus, wird die Störung dem Heimnetz zugeordnet), WAN-Punkte sind
+  Ausweichziele. Neue Zone **„keine (nicht werten)“**: wird gemessen und
+  angezeigt, aber nicht ausgewertet.
+- **Tooltips (?)** an allen Kennzahlen, Spalten, Karten und Buttons mit
+  Erklärungen für Laien.
+- **Diagramm-Legende nach Zonen gruppiert** (LAN / ISP_EDGE / WAN / nicht gewertet)
+  mit Messwerten unter dem Mauszeiger; Klick blendet Linien ein/aus.
+- **Deutlich unterscheidbare Farben**: jede Linie hat eine eigene Farbe (kein Rot,
+  das bleibt für Verluste), identisch mit dem Punkt in der Tabelle; manuelle
+  Messpunkte gestrichelt.
+- **Logarithmische Skala** automatisch, sobald Werte von wenigen ms bis mehrere
+  100 ms vorkommen (umschaltbar: automatisch / linear / logarithmisch).
+
 ## v0.6.0 – 2026-09-27
 
 - **Störungen mit Sekunden-Matrix** (live, im Verlauf und im HTML-Bericht): Sobald

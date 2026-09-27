@@ -229,6 +229,9 @@ func (r *runner) finishTick(t *tick) {
 // the state of the path at the same moment.
 func (r *runner) checkCustom(t *tick, pathLost []bool) {
 	for _, c := range t.custom {
+		if c.zone == ZoneNone {
+			continue // recorded, but not evaluated
+		}
 		if rtt, ok := t.result[c.key]; ok && rtt >= 0 {
 			continue
 		}

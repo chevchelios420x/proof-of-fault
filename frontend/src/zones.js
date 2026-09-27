@@ -12,35 +12,43 @@ export const fmtDur = (s) => {
   return (h ? h + 'h ' : '') + (h || m ? m + 'm ' : '') + sec + 's'
 }
 
-// Distinct colors for individual hops; zone colors and greys are excluded so
-// every line is clearly tied to one row of the route table.
-const HOP_PALETTE = ['#8e44ad', '#d4a017', '#1f77b4', '#c2185b', '#17becf', '#8c564b', '#bcbd22', '#ff7f0e', '#6a3d9a', '#b15928', '#e377c2', '#2ca02c']
+// One clearly distinguishable color per chart line. Red is left out (it
+// marks losses); zones are shown by grouping, not by color.
+const PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#17becf', '#8c564b', '#e377c2', '#222222', '#bcbd22', '#000080', '#7f7f7f', '#00a087', '#b8860b', '#6a5acd']
 
 export const hopKey = (addr) => 'hop:' + addr
 export const isHopKey = (k) => k.startsWith('hop:')
+export const devKey = (host) => 'dev:' + host
 
-// hopColor: zone representatives use their zone color, other hops a palette
-// color by TTL (stable and unique along the path).
-export function hopColor(ttl, repZone) {
-  if (repZone) return ZONE_COLOR[repZone]
-  return HOP_PALETTE[(ttl - 1) % HOP_PALETTE.length]
+export const GROUPS = ['LAN', 'ISP_EDGE', 'WAN', 'none']
+export const GROUP_LABEL = { LAN: 'LAN – Heimnetz', ISP_EDGE: 'ISP_EDGE – Anbieter', WAN: 'WAN – Internet/Ziele', none: 'Nicht gewertet' }
+
+// colorMap assigns every route row and manual point a unique color, in
+// route order, so table dots and chart lines always match.
+export function colorMap(hops = [], reps = [], custom = []) {
+  const repZone = Object.fromEntries(reps.map((r) => [r.ip, r.zone]))
+  const keys = []
+  for (const h of hops) {
+    if (!h.responsive) continue
+    const k = repZone[h.addr] || hopKey(h.addr)
+    if (!keys.includes(k)) keys.push(k)
+  }
+  for (const r of reps) if (!keys.includes(r.zone)) keys.push(r.zone)
+  for (const c of custom) keys.push(devKey(c.host))
+  return Object.fromEntries(keys.map((k, i) => [k, PALETTE[i % PALETTE.length]]))
 }
 
-// hopLabel: "Hop 2 · Heimrouter" (name) or "Hop 2 · 192.168.0.1", plus the
-// zone for zone measuring points.
+// hopLabel: "Hop 2 · Heimrouter" (name) or "Hop 2 · 192.168.0.1".
 export function hopLabel(ttl, addr, name, repZone) {
   const base = ttl ? `Hop ${ttl} · ${name || addr}` : name || addr
-  return repZone ? `${base} (${repZone})` : base
+  return repZone ? `${base} (Messpunkt)` : base
 }
 
-// buildSeries returns the chart series in route order (TTL). Zone
-// measuring points keep their zone key; other hops appear when watched.
-export const devKey = (host) => 'dev:' + host
-const DEV_PALETTE = ['#000000', '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#469990', '#9a6324']
-export const devColor = (i) => DEV_PALETTE[i % DEV_PALETTE.length]
-
+// buildSeries returns the chart series in route order (TTL), followed by
+// manual points. Each series carries its zone group for the legend.
 export function buildSeries({ hops = [], reps = [], watched = [], names = {}, keys = null, custom = [] }) {
   const repZone = Object.fromEntries(reps.map((r) => [r.ip, r.zone]))
+  const colors = colorMap(hops, reps, custom)
   const out = []
   const seen = new Set()
   for (const h of hops) {
@@ -49,22 +57,22 @@ export function buildSeries({ hops = [], reps = [], watched = [], names = {}, ke
     const rz = repZone[h.addr]
     const key = rz || hopKey(h.addr)
     if (keys ? !keys.includes(key) : !rz && !watched.includes(h.addr)) continue
-    out.push({ key, addr: h.addr, ttl: h.ttl, zone: rz, label: hopLabel(h.ttl, h.addr, names[h.addr], rz), color: hopColor(h.ttl, rz) })
+    out.push({ key, addr: h.addr, ttl: h.ttl, group: rz || h.zone, label: hopLabel(h.ttl, h.addr, names[h.addr], rz), color: colors[key] })
   }
-  // Series without a hop in the table (e.g. target that filters traceroute).
   for (const r of reps) {
     if (seen.has(r.ip) || (keys && !keys.includes(r.zone))) continue
-    out.push({ key: r.zone, addr: r.ip, ttl: 0, zone: r.zone, label: hopLabel(0, r.ip, names[r.ip], r.zone), color: ZONE_COLOR[r.zone] })
+    out.push({ key: r.zone, addr: r.ip, ttl: 0, group: r.zone, label: hopLabel(0, r.ip, names[r.ip], r.zone), color: colors[r.zone] })
   }
-  custom.forEach((c, i) => {
-    if (!c.enabled || !c.ip || (keys && !keys.includes(devKey(c.host)))) return
-    out.push({ key: devKey(c.host), addr: c.ip, ttl: 0, zone: c.zone, label: `Gerät ${c.name || c.host}`, color: devColor(i) })
+  custom.forEach((c) => {
+    const k = devKey(c.host)
+    if (!c.enabled || !c.ip || (keys && !keys.includes(k))) return
+    out.push({ key: k, addr: c.ip, ttl: 0, group: c.zone || 'none', label: `${c.name || c.host}`, color: colors[k], dash: true })
   })
   for (const k of keys || []) {
     if (out.some((x) => x.key === k)) continue
     const isDev = k.startsWith('dev:')
     const addr = isHopKey(k) || isDev ? k.slice(4) : k
-    out.push({ key: k, addr, ttl: 0, zone: isHopKey(k) || isDev ? '' : k, label: (isDev ? 'Gerät ' : '') + (names[addr] || addr), color: ZONE_COLOR[k] || '#555' })
+    out.push({ key: k, addr, ttl: 0, group: isHopKey(k) || isDev ? 'none' : k, label: names[addr] || addr, color: PALETTE[out.length % PALETTE.length], dash: isDev })
   }
   return out
 }

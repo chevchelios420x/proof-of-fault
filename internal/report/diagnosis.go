@@ -327,8 +327,8 @@ func DiagnoseAll(events []store.Event, incidents []store.Incident) Diagnosis {
 		d.Advice = []string{"Die betroffenen Server bzw. deren Betreiber prüfen (z. B. Firewall, Überlastung, VPN-Tunnel)."}
 	case monitor.ClassDevice:
 		d.Level = "lan"
-		d.Headline = "Nur einzelne Geräte im Heimnetz waren zeitweise weg – der Internetweg war nicht betroffen."
-		d.Advice = []string{"Die betroffenen Geräte prüfen (WLAN-Empfang, Energiesparmodus, Stromversorgung)."}
+		d.Headline = "Nur einzelne manuelle Messpunkte (LAN/ISP_EDGE) waren zeitweise weg – der Internetweg zum Ziel war nicht betroffen."
+		d.Advice = []string{"Die betroffenen Geräte prüfen (WLAN-Empfang, Energiesparmodus, Stromversorgung, Firewall)."}
 	}
 	return d
 }

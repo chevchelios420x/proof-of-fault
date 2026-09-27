@@ -4,7 +4,7 @@
 
   const CLASS = {
     lan: 'Heimnetz', isp: 'Anbieter-Zugang', isp_core: 'Anbieter-Netz/Internet',
-    target: 'nur Hauptziel', alt: 'nur Ausweichziel', device: 'nur LAN-Gerät',
+    target: 'nur Hauptziel', alt: 'nur Ausweichziel', device: 'nur Einzel-Messpunkt',
   }
   const STATE = { '.': 'antwortet', s: 'langsam', x: 'keine Antwort', '-': 'nicht gemessen' }
   const CELL = { '.': 'ok', s: 'slow', x: 'lost', '-': 'none' }
@@ -84,7 +84,7 @@
   td.lbl { padding-right: 10px; white-space: nowrap; text-align: left; font-size: 12px; }
   td.lbl.target { font-weight: 600; }
   td.lbl.custom { font-style: italic; }
-  .lostn { color: #d62828; font-style: normal; font-size: 11px; }
+  .lostn { color: #d62828; font-style: normal; font-size: 11px; margin-left: 6px; }
   td.tick { font-size: 9px; color: var(--muted); white-space: nowrap; height: 12px; }
   .cell, i.cell { width: 9px; min-width: 9px; height: 14px; border-radius: 2px; display: table-cell; }
   i.cell { display: inline-block; width: 10px; height: 10px; vertical-align: middle; }

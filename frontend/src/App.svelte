@@ -7,7 +7,9 @@
   import Diagnosis from './Diagnosis.svelte'
   import IncidentList from './IncidentList.svelte'
   import { Timeline } from './timeline.js'
-  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, hopColor, buildSeries, devColor } from './zones.js'
+  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap } from './zones.js'
+  import Help from './Help.svelte'
+  import { HELP } from './help.js'
 
   let tab = 'live'
   let version = ''
@@ -38,6 +40,7 @@
   $: repZoneByAddr = Object.fromEntries((status.reps || []).map((r) => [r.ip, r.zone]))
   // One chart line per route row, in route order, same color and label as the table.
   $: custom = status.custom || []
+  $: colors = colorMap(status.hops || [], status.reps || [], custom)
   $: liveSeries = buildSeries({ hops: status.hops || [], reps: status.reps || [], watched, names, custom })
 
   // User-defined measuring points (e.g. other devices in the LAN).
@@ -196,14 +199,15 @@
 <main>
   {#if tab === 'live'}
     <section class="card controls">
-      <label>Ziel (IP oder Domain)
+      <label>
+        <span>Ziel (IP oder Domain)<Help align="left" text={HELP.target} /></span>
         <input bind:value={target} disabled={running} placeholder="z. B. 1.1.1.1 oder google.com"
           on:keydown={(e) => e.key === 'Enter' && !running && start()} />
       </label>
       {#if running}
         <button class="danger" on:click={stop}>Überwachung stoppen</button>
       {:else}
-        <button class="primary" on:click={start}>Überwachung starten</button>
+        <button class="primary" on:click={start}>Überwachung starten</button><Help text={HELP.start} />
       {/if}
       <span class="state">
         {#if status.state === 'resolving'}Löse Namen auf …
@@ -228,19 +232,19 @@
           {@const rep = status.reps.find((r) => r.zone === z)}
           {@const s = stats[z]}
           <div class="card zone" style="border-top: 4px solid {ZONE_COLOR[z]}">
-            <h3>{ZONE_LABEL[z]}</h3>
+            <h3>{ZONE_LABEL[z]}<Help align={z === 'WAN' ? 'right' : 'left'} text={HELP[z]} /></h3>
             {#if rep}
               <div class="ip">{rep.ip}{rep.direct ? '' : ` (TTL ${rep.ttl})`}</div>
-              <div class="big">{fmt(s?.p50Ms)} <small>ms P50</small></div>
+              <div class="big">{fmt(s?.p50Ms)} <small>ms P50</small><Help text={HELP.p50} /></div>
               <table>
-                <tr><td>Verlust</td><td class:bad={s?.lossPct > 0}>{fmt(s?.lossPct, 2)} % ({(s?.sent ?? 0) - (s?.received ?? 0)}/{s?.sent ?? 0})</td></tr>
+                <tr><td>Verlust<Help align="left" text={HELP.loss} /></td><td class:bad={s?.lossPct > 0}>{fmt(s?.lossPct, 2)} % ({(s?.sent ?? 0) - (s?.received ?? 0)}/{s?.sent ?? 0})</td></tr>
                 {#if z !== 'WAN' && (s?.sent ?? 0) - (s?.received ?? 0) > 0}
                   <tr title="Nur Verluste, bei denen auch alle folgenden Messpunkte bis zum Ziel nicht antworteten. Der Rest ist ICMP-Drosselung dieses Hops und harmlos.">
-                    <td>davon echt (bis Ziel)</td><td class:bad={realLoss[z] > 0}>{realLoss[z] || 0}</td></tr>
+                    <td>davon echt (bis Ziel)<Help align="left" text={HELP.realLoss} /></td><td class:bad={realLoss[z] > 0}>{realLoss[z] || 0}</td></tr>
                 {/if}
-                <tr><td>Jitter (RFC 3550)</td><td>{fmt(s?.jitterMs, 2)} ms</td></tr>
-                <tr><td>P95 / P99</td><td>{fmt(s?.p95Ms)} / {fmt(s?.p99Ms)} ms</td></tr>
-                <tr><td>Min / Max</td><td>{fmt(s?.minMs)} / {fmt(s?.maxMs)} ms</td></tr>
+                <tr><td>Jitter (RFC 3550)<Help align="left" text={HELP.jitter} /></td><td>{fmt(s?.jitterMs, 2)} ms</td></tr>
+                <tr><td>P95 / P99<Help align="left" text={HELP.p9599} /></td><td>{fmt(s?.p95Ms)} / {fmt(s?.p99Ms)} ms</td></tr>
+                <tr><td>Min / Max<Help align="left" text={HELP.minmax} /></td><td>{fmt(s?.minMs)} / {fmt(s?.maxMs)} ms</td></tr>
               </table>
             {:else}
               <div class="ip muted">kein Hop in dieser Zone erkannt</div>
@@ -252,23 +256,23 @@
       {#if liveDiag}<Diagnosis d={liveDiag} live={running} />{/if}
 
       <section class="card">
-        <h2>Latenzverlauf (live)</h2>
+        <h2>Latenzverlauf (live)<Help align="left" text={HELP.chart} /></h2>
         <Chart bind:this={liveChart} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
       </section>
 
       <div class="two">
         <section class="card">
-          <h2>Störungen – wer hat wann nicht geantwortet?</h2>
+          <h2>Störungen – wer hat wann nicht geantwortet?<Help align="left" text={HELP.incidents} /></h2>
           <IncidentList incidents={liveIncidents} onSelect={(i) => liveChart?.zoomTo(i.t - 60000, i.end + 60000)} />
         </section>
         <section class="card">
-          <h2>Ereignisprotokoll</h2>
+          <h2>Ereignisprotokoll<Help align="left" text={HELP.events} /></h2>
           <EventLog events={liveEvents} />
         </section>
         <section class="card">
-          <h2>Route</h2>
+          <h2>Route<Help align="left" text={HELP.route} /></h2>
           <table class="route">
-            <tr><th>TTL</th><th>Adresse</th><th>Name</th><th>Zone</th><th>RTT</th><th title="Linie im Diagramm anzeigen">Diagramm</th></tr>
+            <tr><th>TTL<Help align="left" text={HELP.ttl} /></th><th>Adresse<Help text={HELP.addr} /></th><th>Name<Help text={HELP.name} /></th><th>Zone<Help text={HELP.zone} /></th><th>RTT<Help text={HELP.rtt} /></th><th>Diagramm<Help align="right" text={HELP.diagram} /></th></tr>
             {#each status.hops || [] as h}
               <tr>
                 <td>{h.ttl}</td>
@@ -296,7 +300,7 @@
                   {#if h.responsive}
                     <label class="toggle" title={repZoneByAddr[h.addr] ? `Messpunkt der Zone ${repZoneByAddr[h.addr]}` : 'Eigene Linie im Diagramm (wird nur gemessen, solange aktiv)'}>
                       <input type="checkbox" checked={rowChecked(h, watched, hidden)} on:change={(e) => toggleRow(h, e.target.checked)} />
-                      <span class="dot" style="background:{hopColor(h.ttl, repZoneByAddr[h.addr])}"></span>
+                      <span class="dot" style="background:{colors[rowKey(h)]}"></span>
                     </label>
                   {/if}
                 </td>
@@ -305,25 +309,26 @@
           </table>
           <p class="muted small">Zone ändern: gilt sofort und wird für diesen Hop dauerhaft gemerkt. „Auto“ stellt die automatische Einteilung wieder her.</p>
 
-          <h2 class="sub">Weitere Messpunkte (manuell)</h2>
+          <h2 class="sub">Weitere Messpunkte (manuell)<Help align="left" text={HELP.custom} /></h2>
           <p class="muted small">Beliebige Geräte oder Adressen zusätzlich jede Sekunde anpingen, z. B. ein zweiter Router/Modem, Repeater, NAS oder ein anderer Server. Werden dauerhaft gespeichert und bei jeder Messung mitgemessen.</p>
           <table class="route">
-            <tr><th>Adresse / Host</th><th>Name</th><th>Zone</th><th></th><th>Diagramm</th></tr>
+            <tr><th>Adresse / Host<Help align="left" text={HELP.customAuto} /></th><th>Name<Help text={HELP.name} /></th><th>Zone<Help text={HELP.customZone} /></th><th></th><th>Diagramm<Help align="right" text={HELP.diagram} /></th></tr>
             {#each custom as c, i (c.host)}
               <tr>
                 <td>{c.host}{#if c.ip && c.ip !== c.host}<br /><small class="muted">{c.ip}</small>{/if}{#if c.error}<br /><small class="bad">{c.error}</small>{/if}</td>
                 <td><input class="name" value={c.name} placeholder="optional" on:change={(e) => saveCustom(c, { name: e.target.value })}
                   on:keydown={(e) => e.key === 'Enter' && e.target.blur()} /></td>
                 <td>
-                  <select style="color:{ZONE_COLOR[c.zone]}" value={c.zone} on:change={(e) => saveCustom(c, { zone: e.target.value })}>
+                  <select style="color:{ZONE_COLOR[c.zone] || '#888'}" value={c.zone} on:change={(e) => saveCustom(c, { zone: e.target.value })}>
                     {#each ZONES as z}<option value={z}>{z}</option>{/each}
+                    <option value="none">keine (nicht werten)</option>
                   </select>
                 </td>
                 <td><button class="del" title="Messpunkt entfernen" on:click={() => removeCustom(c)}>✕</button></td>
                 <td>
                   <label class="toggle" title="Messen und im Diagramm anzeigen">
                     <input type="checkbox" checked={c.enabled} on:change={(e) => saveCustom(c, { enabled: e.target.checked })} />
-                    <span class="dot" style="background:{devColor(i)}"></span>
+                    <span class="dot" style="background:{colors[devKey(c.host)]}"></span>
                   </label>
                 </td>
               </tr>
@@ -335,6 +340,7 @@
                 <select bind:value={newZone}>
                   <option value="">Auto</option>
                   {#each ZONES as z}<option value={z}>{z}</option>{/each}
+                  <option value="none">keine (nicht werten)</option>
                 </select>
               </td>
               <td colspan="2"><button class="primary" disabled={!newHost.trim() || customBusy} on:click={addCustom}>Hinzufügen</button></td>
@@ -346,7 +352,7 @@
   {:else}
     <div class="history">
       <aside class="card">
-        <h2>Sitzungen</h2>
+        <h2>Sitzungen<Help align="left" text={HELP.sessions} /></h2>
         {#each sessions as s}
           <button class="session" class:active={s.id === selected} on:click={() => select(s.id)}>
             #{s.id} {s.target}<br /><small>{fmtTime(s.startedAt)}</small>
@@ -360,9 +366,9 @@
             <div class="row">
               <h2>Sitzung #{r.session.id}: {r.session.target} ({r.session.targetIp})</h2>
               <span>
-                <button on:click={() => doExport('html')}>Bericht (HTML/PDF)</button>
-                <button on:click={() => doExport('csv')}>Rohdaten (CSV)</button>
-                <button on:click={() => doExport('events')}>Ereignisse (CSV)</button>
+                <button on:click={() => doExport('html')}>Bericht (HTML/PDF)</button><Help text={HELP.exportHtml} />
+                <button on:click={() => doExport('csv')}>Rohdaten (CSV)</button><Help text={HELP.exportCsv} />
+                <button on:click={() => doExport('events')}>Ereignisse (CSV)</button><Help align="right" text={HELP.exportEvents} />
               </span>
             </div>
             <p>{fmtTime(r.session.startedAt)} – {fmtTime(r.session.endedAt)} · Dauer {fmtDur(r.durationSec)} · {r.pathChanges} Routenwechsel</p>
@@ -372,7 +378,7 @@
           <section class="card">
             <h2>Kennzahlen</h2>
             <table>
-              <tr><th>Zone</th><th>Probes</th><th>Verlust %</th><th>Min</th><th>Ø</th><th>P50</th><th>P95</th><th>P99</th><th>Max</th><th>Jitter</th><th>&gt;100 ms</th><th>Ausfallzeit</th></tr>
+              <tr><th>Zone</th><th>Probes</th><th>Verlust %<Help text={HELP.loss} /></th><th>Min</th><th>Ø</th><th>P50</th><th>P95<Help text={HELP.p9599} /></th><th>P99</th><th>Max</th><th>Jitter<Help text={HELP.jitter} /></th><th>&gt;100 ms<Help text={HELP.spikes} /></th><th>Ausfallzeit<Help align="right" text={HELP.outageTime} /></th></tr>
               {#each r.zones || [] as z}
                 <tr><td style="color:{ZONE_COLOR[z.zone]}">{z.zone}</td><td>{z.summary.sent}</td><td>{fmt(z.summary.lossPct, 2)}</td>
                   <td>{fmt(z.summary.minMs)}</td><td>{fmt(z.summary.avgMs)}</td><td>{fmt(z.summary.p50Ms)}</td><td>{fmt(z.summary.p95Ms)}</td>
@@ -382,16 +388,16 @@
             </table>
           </section>
           <section class="card">
-            <h2>Latenzverlauf</h2>
+            <h2>Latenzverlauf<Help align="left" text={HELP.chart} /></h2>
             <Chart bind:this={histChart} bands={r.incidents || []} timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
               hidden={histHidden} onToggle={(k, show) => { show ? histHidden.delete(k) : histHidden.add(k); histHidden = new Set(histHidden) }} version={histVersion} />
           </section>
           <section class="card">
-            <h2>Störungen – wer hat wann nicht geantwortet?</h2>
+            <h2>Störungen – wer hat wann nicht geantwortet?<Help align="left" text={HELP.incidents} /></h2>
             <IncidentList incidents={r.incidents || []} onSelect={(i) => histChart?.zoomTo(i.t - 60000, i.end + 60000)} />
           </section>
           <section class="card">
-            <h2>Ereignisprotokoll</h2>
+            <h2>Ereignisprotokoll<Help align="left" text={HELP.events} /></h2>
             <EventLog events={r.events || []} />
           </section>
         </div>

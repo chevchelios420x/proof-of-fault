@@ -163,3 +163,28 @@ func TestIncidents(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomZones(t *testing.T) {
+	order := []series{
+		{key: "LAN", ttl: 1, zone: path.LAN, label: "Hop 1"},
+		{key: "ISP_EDGE", ttl: 2, zone: path.ISPEdge, label: "Hop 2"},
+		{key: "WAN", ttl: targetTTL, zone: path.WAN, label: "Ziel"},
+	}
+	fritz := series{key: DevKey("192.168.0.1"), zone: path.LAN, label: "Fritz"}
+	ignored := series{key: DevKey("192.168.144.9"), zone: ZoneNone, label: "PVE"}
+	tk := &tick{order: order, custom: []series{fritz, ignored}}
+	cases := []struct {
+		name string
+		st   map[string]byte
+		want string
+	}{
+		{"lan custom down with all targets", map[string]byte{"LAN": '.', "ISP_EDGE": 'x', "WAN": 'x', fritz.key: 'x', ignored.key: '.'}, ClassLAN},
+		{"lan custom down, internet ok", map[string]byte{"LAN": '.', "ISP_EDGE": '.', "WAN": '.', fritz.key: 'x', ignored.key: '.'}, ClassDevice},
+		{"zone none ignored", map[string]byte{"LAN": '.', "ISP_EDGE": '.', "WAN": '.', fritz.key: '.', ignored.key: 'x'}, ""},
+	}
+	for _, c := range cases {
+		if got, _ := classifyTick(tk, c.st, len(order)); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}

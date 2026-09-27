@@ -1,13 +1,15 @@
 <script>
   export let d = null
   export let live = false
+  import Help from './Help.svelte'
+  import { HELP } from './help.js'
 </script>
 
 {#if d}
   <div class="diag lvl-{d.level}">
     <div class="head">
       <h2>{live ? 'Zwischenstand: ' : 'Diagnose: '}{d.headline}</h2>
-      <span class="conf">Sicherheit: <b>{d.confidence}</b></span>
+      <span class="conf">Sicherheit: <b>{d.confidence}</b><Help align="right" text={HELP.diagnosis} /></span>
     </div>
     <ul>{#each d.explanation || [] as x}<li>{x}</li>{/each}</ul>
     <p class="adv"><b>Was tun?</b></p>

@@ -66,9 +66,15 @@ func (r *runner) customStates(t *tick, st map[string]byte) {
 	}
 }
 
+// ZoneNone marks user-defined measuring points that are shown and recorded
+// but not used for the evaluation.
+const ZoneNone = "none"
+
 // classifyTick decides whether a tick shows a disruption and where it is.
+// User-defined points count for the zone chosen for them: WAN points are
+// backup targets, LAN/ISP_EDGE points belong to that part of the path.
 // Hop-only losses (the path behind answers) are ICMP rate limiting and no
-// disruption.
+// disruption; points with zone "none" are ignored.
 func classifyTick(t *tick, st map[string]byte, lostFrom int) (class, origin string) {
 	n := len(t.order)
 	if n == 0 {
@@ -76,34 +82,60 @@ func classifyTick(t *tick, st map[string]byte, lostFrom int) (class, origin stri
 	}
 	lost := func(key string) bool { return st[key] == 'x' }
 	mainLost := lost(t.order[n-1].key)
-	var altLost, altOK, devLost []string
+	var altLost, altOK []string
+	zoneLost := map[path.Zone][]string{} // lost points per zone (path + custom)
+	for _, z := range []path.Zone{path.LAN, path.ISPEdge} {
+		if lost(string(z)) {
+			for _, s := range t.order {
+				if s.key == string(z) {
+					zoneLost[z] = append(zoneLost[z], s.label)
+				}
+			}
+		}
+	}
 	for _, c := range t.custom {
 		switch {
-		case path.Zone(c.zone) == path.WAN && lost(c.key):
+		case c.zone == ZoneNone || c.zone == "":
+		case c.zone == path.WAN && lost(c.key):
 			altLost = append(altLost, c.label)
-		case path.Zone(c.zone) == path.WAN:
+		case c.zone == path.WAN:
 			altOK = append(altOK, c.label)
 		case lost(c.key):
-			devLost = append(devLost, c.label)
+			zoneLost[c.zone] = append(zoneLost[c.zone], c.label)
 		}
 	}
 	allTargetsLost := mainLost && len(altOK) == 0
 	if lostFrom < n {
 		origin = t.order[lostFrom].label
 	}
+	orig := func(z path.Zone) string {
+		if len(zoneLost[z]) > 0 && (origin == "" || path.Zone(z) != path.WAN) {
+			return strings.Join(zoneLost[z], ", ")
+		}
+		return origin
+	}
 	switch {
-	case allTargetsLost && st[string(path.LAN)] == 'x':
-		return ClassLAN, origin
-	case allTargetsLost && st[string(path.ISPEdge)] == 'x':
-		return ClassISP, origin
+	case allTargetsLost && len(zoneLost[path.LAN]) > 0:
+		return ClassLAN, orig(path.LAN)
+	case allTargetsLost && len(zoneLost[path.ISPEdge]) > 0:
+		return ClassISP, orig(path.ISPEdge)
 	case allTargetsLost:
 		return ClassISPCore, origin
 	case mainLost:
 		return ClassTarget, t.order[n-1].label
 	case len(altLost) > 0:
 		return ClassAlt, strings.Join(altLost, ", ")
-	case len(devLost) > 0:
-		return ClassDevice, strings.Join(devLost, ", ")
+	}
+	// Targets fine: only custom LAN/ISP_EDGE points count here; a silent
+	// router hop alone is ICMP rate limiting.
+	var dev []string
+	for _, c := range t.custom {
+		if (c.zone == path.LAN || c.zone == path.ISPEdge) && lost(c.key) {
+			dev = append(dev, c.label)
+		}
+	}
+	if len(dev) > 0 {
+		return ClassDevice, strings.Join(dev, ", ")
 	}
 	return "", ""
 }
@@ -235,9 +267,9 @@ func describeIncident(in store.Incident) (title, detail string) {
 	dur := (time.Duration(in.Seconds) * time.Second).String()
 	switch in.Class {
 	case ClassLAN:
-		title = "Heimnetz gestört: der eigene Router antwortete nicht"
+		title = "Heimnetz gestört: keine Antwort von " + in.Origin
 	case ClassISP:
-		title = "Anbieter-Zugang gestört: Router OK, ab " + in.Origin + " keine Antwort"
+		title = "Anbieter-Zugang gestört: Heimnetz OK, keine Antwort von " + in.Origin
 	case ClassISPCore:
 		title = "Kein Internet: alle Ziele weg, Anbieter-Zugang antwortete noch"
 	case ClassTarget:
@@ -245,7 +277,7 @@ func describeIncident(in store.Incident) (title, detail string) {
 	case ClassAlt:
 		title = "Nur Ausweichziel(e) weg: " + in.Origin
 	case ClassDevice:
-		title = "Nur Gerät(e) im Heimnetz weg: " + in.Origin
+		title = "Nur einzelne Messpunkte weg (Internet OK): " + in.Origin
 	}
 	title += " (" + dur + ")"
 	detail = "Ohne Antwort: " + orNone(down) + ". Antworteten normal: " + orNone(up) + "."
@@ -275,7 +307,7 @@ func ClassName(c string) string {
 	case ClassAlt:
 		return "nur Ausweichziel"
 	case ClassDevice:
-		return "nur LAN-Gerät"
+		return "nur Einzel-Messpunkt"
 	}
 	return c
 }
