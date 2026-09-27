@@ -20,8 +20,28 @@ export const hopKey = (addr) => 'hop:' + addr
 export const isHopKey = (k) => k.startsWith('hop:')
 export const devKey = (host) => 'dev:' + host
 
-export const GROUPS = ['LAN', 'ISP_EDGE', 'WAN', 'none']
-export const GROUP_LABEL = { LAN: 'LAN – Heimnetz', ISP_EDGE: 'ISP_EDGE – Anbieter', WAN: 'WAN – Internet/Ziele', none: 'Nicht gewertet' }
+// Default zone list (the real one comes from the settings).
+export const DEFAULT_ZONES = [
+  { id: 'LAN', name: 'LAN – Heimnetz', color: '#2a9d8f', role: 'LAN', builtin: true },
+  { id: 'ISP_EDGE', name: 'ISP_EDGE – Anbieter', color: '#e76f51', role: 'ISP_EDGE', builtin: true },
+  { id: 'WAN', name: 'WAN – Internet/Ziele', color: '#3a5a8c', role: 'WAN', builtin: true },
+  { id: 'none', name: 'Nicht gewertet', color: '#888888', role: 'none', builtin: true },
+]
+
+// groupBy sorts items into the configured zones (in their order); items of
+// unknown zones end up in "Sonstige".
+export function groupBy(items, zoneOf, zones = DEFAULT_ZONES) {
+  const out = []
+  const used = new Set()
+  for (const z of zones) {
+    const list = items.filter((it) => zoneOf(it) === z.id)
+    list.forEach((it) => used.add(it))
+    if (list.length) out.push({ zone: z, items: list })
+  }
+  const rest = items.filter((it) => !used.has(it))
+  if (rest.length) out.push({ zone: { id: '?', name: 'Sonstige', color: '#888888' }, items: rest })
+  return out
+}
 
 // colorMap assigns every route row and manual point a unique color, in
 // route order, so table dots and chart lines always match.

@@ -111,7 +111,11 @@ func (m *Monitor) SaveSettings(cfg config.Settings) error {
 	m.mu.Lock()
 	m.cfg = cfg
 	m.mu.Unlock()
-	m.send(func(r *runner) { r.cfg = cfg })
+	custom := m.Status().Custom
+	m.send(func(r *runner) {
+		r.cfg = cfg
+		r.setCustom(custom) // zone roles may have changed
+	})
 	return nil
 }
 
@@ -248,7 +252,7 @@ func (m *Monitor) SaveCustomPoint(p store.CustomPoint) error {
 	if p.Host == "" {
 		return errors.New("bitte IP-Adresse oder Hostnamen angeben")
 	}
-	if p.Zone != "" && p.Zone != ZoneNone && !path.ValidZone(path.Zone(p.Zone)) {
+	if p.Zone != "" && m.Settings().Role(p.Zone) == "" {
 		return fmt.Errorf("ungültige Zone %q", p.Zone)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -560,11 +564,15 @@ func (r *runner) setCustom(cs []CustomStatus) {
 		if c.Name != "" {
 			label = c.Name + " (" + c.Host + ")"
 		}
-		if c.Zone == ZoneNone {
+		role := r.cfg.Role(c.Zone)
+		if role == "" {
+			role = ZoneNone // zone was deleted
+		}
+		if role == ZoneNone {
 			label += " – nicht gewertet"
 		}
 		r.custom = append(r.custom, customPoint{addr: a,
-			s: series{key: DevKey(c.Host), zone: path.Zone(c.Zone), addr: c.IP, label: "Gerät " + label}})
+			s: series{key: DevKey(c.Host), zone: path.Zone(role), group: c.Zone, addr: c.IP, label: "Gerät " + label}})
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chevchelios420x/proof-of-fault/internal/config"
 	"github.com/chevchelios420x/proof-of-fault/internal/metrics"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
@@ -44,6 +45,7 @@ type Report struct {
 	Events        []store.Event      `json:"events"`
 	Incidents     []store.Incident   `json:"incidents"`
 	HighLatencyMs float64            `json:"highLatencyMs"`
+	ZoneDefs      []config.ZoneDef   `json:"zoneDefs"`
 	DataSHA256    string             `json:"dataSha256"`
 }
 
@@ -90,7 +92,9 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 		rep.OutageSeconds[o.Zone] += o.Seconds
 	}
 
-	highMs := st.Settings().HighLatencyMs
+	cfg := st.Settings()
+	rep.ZoneDefs = cfg.Zones
+	highMs := cfg.HighLatencyMs
 	rep.HighLatencyMs = highMs
 	byZone := map[path.Zone][]store.Sample{}
 	h := sha256.New()

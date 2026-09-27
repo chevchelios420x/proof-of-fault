@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import uPlot from 'uplot'
   import Help from './Help.svelte'
-  import { GROUPS, GROUP_LABEL } from './zones.js'
+  import { DEFAULT_ZONES, groupBy } from './zones.js'
 
   export let timeline
   export let series = [] // [{key, label, color, group, dash}] in route order
@@ -11,6 +11,7 @@
   export let version = 0 // bump to redraw
   export let live = false // pause updates while the mouse is over the chart
   export let bands = [] // incidents [{t, end, class}] shaded in the plot
+  export let zones = DEFAULT_ZONES // configured zones (legend groups)
   export let theme = 0 // bump when the color scheme changes (axis colors)
   export let windowMin = 30 // live view: visible minutes (0 = whole session)
 
@@ -26,7 +27,7 @@
   $: keys = series.map((s) => s.key)
   $: signature = series.map((s) => s.key + '=' + s.label + '=' + s.color).join('|') + '#' + theme
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
-  $: groups = GROUPS.map((g) => ({ g, items: series.filter((s) => (s.group || 'none') === g) })).filter((x) => x.items.length)
+  $: groups = groupBy(series, (s) => s.group || 'none', zones)
 
   // Auto: logarithmic once the data spans roughly 1 ms … 1000 ms, so
   // single spikes do not flatten all normal values.
@@ -221,7 +222,7 @@
 <div class="legend">
   {#each groups as grp}
     <div class="group">
-      <div class="gname">{GROUP_LABEL[grp.g] || grp.g}</div>
+      <div class="gname" style="border-bottom-color:{grp.zone.color}">{grp.zone.name}</div>
       {#each grp.items as s}
         <button class="item" class:off={hidden.has(s.key)} on:click={() => toggle(s.key)} title="Klicken zum Ein-/Ausblenden">
           <svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke={s.color} stroke-width="3" stroke-dasharray={s.dash ? '6 3' : ''} /></svg>
@@ -247,7 +248,7 @@
   .chart { width: 100%; min-height: 340px; }
   .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 6px; }
   .group { display: flex; flex-direction: column; gap: 2px; min-width: 200px; }
-  .gname { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--border); padding-bottom: 2px; }
+  .gname { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 2px solid var(--border); padding-bottom: 2px; }
   .item { display: flex; align-items: center; gap: 6px; border: none; background: none; padding: 1px 0; font-size: 13px; text-align: left; }
   .item.off { opacity: 0.35; }
   .item .val { margin-left: auto; padding-left: 10px; font-variant-numeric: tabular-nums; color: var(--muted); }

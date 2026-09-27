@@ -29,6 +29,18 @@ type Sounds struct {
 	Zones       map[string]ZoneSounds `json:"zones"` // LAN, ISP_EDGE, WAN
 }
 
+// ZoneDef describes a zone. The built-in zones LAN, ISP_EDGE, WAN and "none"
+// can be renamed and recolored; user zones additionally name the built-in
+// Role whose evaluation rules they follow.
+type ZoneDef struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+	Role        string `json:"role"` // LAN | ISP_EDGE | WAN | none
+	Builtin     bool   `json:"builtin"`
+}
+
 // Settings are all user settings.
 type Settings struct {
 	Spikes           map[string]Spike `json:"spikes"`           // per zone: LAN, ISP_EDGE, WAN
@@ -45,6 +57,26 @@ type Settings struct {
 	Theme            string           `json:"theme"`            // auto | light | dark
 	DefaultWindowMin int              `json:"defaultWindowMin"` // live chart window
 	Sounds           Sounds           `json:"sounds"`
+	Zones            []ZoneDef        `json:"zones"`
+}
+
+func builtinZones() []ZoneDef {
+	return []ZoneDef{
+		{ID: "LAN", Name: "LAN – Heimnetz", Color: "#2a9d8f", Role: "LAN", Builtin: true, Description: "Eigenes Netz bis zum Router, der zum Anbieter führt."},
+		{ID: "ISP_EDGE", Name: "ISP_EDGE – Anbieter", Color: "#e76f51", Role: "ISP_EDGE", Builtin: true, Description: "Anschluss und erste Knoten des Internetanbieters."},
+		{ID: "WAN", Name: "WAN – Internet/Ziele", Color: "#3a5a8c", Role: "WAN", Builtin: true, Description: "Internet hinter dem Anbieter, Ziel und Ausweichziele."},
+		{ID: "none", Name: "Nicht gewertet", Color: "#888888", Role: "none", Builtin: true, Description: "Wird gemessen und angezeigt, aber nicht ausgewertet."},
+	}
+}
+
+// Role returns the evaluation role of a zone ID ("" for unknown IDs).
+func (s Settings) Role(zone string) string {
+	for _, z := range s.Zones {
+		if z.ID == zone {
+			return z.Role
+		}
+	}
+	return ""
 }
 
 // Defaults returns the factory settings.
@@ -112,6 +144,7 @@ func (s Settings) Normalize() Settings {
 	if s.Theme != "light" && s.Theme != "dark" {
 		s.Theme = "auto"
 	}
+	s.Zones = normalizeZones(s.Zones)
 	if s.Sounds.Zones == nil {
 		s.Sounds.Zones = d.Sounds.Zones
 	}
@@ -175,4 +208,43 @@ func clampI(v, lo, hi, def int) int {
 		return hi
 	}
 	return v
+}
+
+var validRole = map[string]bool{"LAN": true, "ISP_EDGE": true, "WAN": true, "none": true}
+
+// normalizeZones keeps the built-in zones (first, in fixed order, with fixed
+// role) and valid user zones with unique IDs.
+func normalizeZones(in []ZoneDef) []ZoneDef {
+	out := builtinZones()
+	byID := map[string]ZoneDef{}
+	for _, z := range in {
+		byID[z.ID] = z
+	}
+	for i, b := range out {
+		if z, ok := byID[b.ID]; ok {
+			if z.Name != "" {
+				out[i].Name = z.Name
+			}
+			if z.Color != "" {
+				out[i].Color = z.Color
+			}
+			out[i].Description = z.Description
+		}
+	}
+	seen := map[string]bool{"LAN": true, "ISP_EDGE": true, "WAN": true, "none": true}
+	for _, z := range in {
+		if z.ID == "" || seen[z.ID] || z.Name == "" {
+			continue
+		}
+		if !validRole[z.Role] {
+			z.Role = "none"
+		}
+		if z.Color == "" {
+			z.Color = "#888888"
+		}
+		z.Builtin = false
+		seen[z.ID] = true
+		out = append(out, z)
+	}
+	return out
 }

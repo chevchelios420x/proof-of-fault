@@ -213,7 +213,11 @@ func buildIncident(b *incBuf) store.Incident {
 		}
 	}
 	for _, s := range rows {
-		row := store.IncidentSeries{Key: s.key, Label: s.label, Zone: string(s.zone), Custom: isCustom(s), Target: s.ttl >= targetTTL}
+		zone := string(s.zone)
+		if s.group != "" {
+			zone = s.group
+		}
+		row := store.IncidentSeries{Key: s.key, Label: s.label, Zone: zone, Custom: isCustom(s), Target: s.ttl >= targetTTL}
 		var states []byte
 		for i, ts := range b.ticks {
 			st, ok := ts.state[s.key]

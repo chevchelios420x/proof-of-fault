@@ -25,3 +25,10 @@ func TestNormalize(t *testing.T) {
 		t.Fatalf("unexpected %+v", s)
 	}
 }
+
+func TestZones(t *testing.T) {
+	s := Settings{Zones: []ZoneDef{{ID: "LAN", Name: "Mein Netz", Role: "WAN"}, {ID: "vpn", Name: "VPN", Role: "WAN"}, {ID: "bad", Name: "X", Role: "??"}}}.Normalize()
+	if len(s.Zones) != 6 || s.Zones[0].Name != "Mein Netz" || s.Role("LAN") != "LAN" || s.Role("vpn") != "WAN" || s.Role("bad") != "none" {
+		t.Fatalf("unexpected zones %+v", s.Zones)
+	}
+}

@@ -37,7 +37,8 @@ const (
 type series struct {
 	key   string
 	ttl   int
-	zone  path.Zone
+	zone  path.Zone // evaluation role (LAN, ISP_EDGE, WAN, none)
+	group string    // display zone (user zone ID), "" = same as zone
 	addr  string
 	label string
 }

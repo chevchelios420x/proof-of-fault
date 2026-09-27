@@ -9,7 +9,7 @@
   import Settings from './Settings.svelte'
   import { signalFor } from './sound.js'
   import { Timeline } from './timeline.js'
-  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap } from './zones.js'
+  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap, DEFAULT_ZONES } from './zones.js'
   import Help from './Help.svelte'
   import { HELP } from './help.js'
 
@@ -17,6 +17,10 @@
 
   // Settings and color scheme.
   let settings = null
+  $: zoneDefs = settings?.zones || DEFAULT_ZONES
+  $: zoneName = (id) => zoneDefs.find((z) => z.id === id)?.name || id
+  $: zoneColor = (id) => zoneDefs.find((z) => z.id === id)?.color || '#888'
+
   let showSettings = false
   let themeTick = 0
   let liveWindow = 30
@@ -275,7 +279,7 @@
           {@const rep = status.reps.find((r) => r.zone === z)}
           {@const s = stats[z]}
           <div class="card zone" style="border-top: 4px solid {ZONE_COLOR[z]}">
-            <h3>{ZONE_LABEL[z]}<Help align={z === 'WAN' ? 'right' : 'left'} text={HELP[z]} /></h3>
+            <h3><span style="color:{zoneColor(z)}">●</span> {zoneName(z)}<Help align={z === 'WAN' ? 'right' : 'left'} text={HELP[z]} /></h3>
             {#if rep}
               <div class="ip">{rep.ip}{rep.direct ? '' : ` (TTL ${rep.ttl})`}</div>
               <div class="big">{fmt(s?.p50Ms)} <small>ms P50</small><Help text={HELP.p50} /></div>
@@ -300,13 +304,13 @@
 
       <section class="card">
         <h2>Latenzverlauf (live)<Help align="left" text={HELP.chart} /></h2>
-        <Chart bind:this={liveChart} bind:windowMin={liveWindow} theme={themeTick} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
+        <Chart zones={zoneDefs} bind:this={liveChart} bind:windowMin={liveWindow} theme={themeTick} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
       </section>
 
       <div class="two">
         <section class="card">
           <h2>Störungen – wer hat wann nicht geantwortet?<Help align="left" text={HELP.incidents} /></h2>
-          <IncidentList incidents={liveIncidents} onSelect={(i) => liveChart?.zoomTo(i.t - 60000, i.end + 60000)} />
+          <IncidentList zones={zoneDefs} incidents={liveIncidents} onSelect={(i) => liveChart?.zoomTo(i.t - 60000, i.end + 60000)} />
         </section>
         <section class="card">
           <h2>Ereignisprotokoll<Help align="left" text={HELP.events} /></h2>
@@ -362,9 +366,8 @@
                 <td><input class="name" value={c.name} placeholder="optional" on:change={(e) => saveCustom(c, { name: e.target.value })}
                   on:keydown={(e) => e.key === 'Enter' && e.target.blur()} /></td>
                 <td>
-                  <select style="color:{ZONE_COLOR[c.zone] || '#888'}" value={c.zone} on:change={(e) => saveCustom(c, { zone: e.target.value })}>
-                    {#each ZONES as z}<option value={z}>{z}</option>{/each}
-                    <option value="none">keine (nicht werten)</option>
+                  <select style="color:{zoneColor(c.zone)}" value={c.zone} on:change={(e) => saveCustom(c, { zone: e.target.value })}>
+                    {#each zoneDefs as z}<option value={z.id}>{z.name}</option>{/each}
                   </select>
                 </td>
                 <td><button class="del" title="Messpunkt entfernen" on:click={() => removeCustom(c)}>✕</button></td>
@@ -382,8 +385,7 @@
               <td>
                 <select bind:value={newZone}>
                   <option value="">Auto</option>
-                  {#each ZONES as z}<option value={z}>{z}</option>{/each}
-                  <option value="none">keine (nicht werten)</option>
+                  {#each zoneDefs as z}<option value={z.id}>{z.name}</option>{/each}
                 </select>
               </td>
               <td colspan="2"><button class="primary" disabled={!newHost.trim() || customBusy} on:click={addCustom}>Hinzufügen</button></td>
@@ -433,12 +435,12 @@
           </section>
           <section class="card">
             <h2>Latenzverlauf<Help align="left" text={HELP.chart} /></h2>
-            <Chart bind:this={histChart} theme={themeTick} bands={r.incidents || []} timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
+            <Chart zones={zoneDefs} bind:this={histChart} theme={themeTick} bands={r.incidents || []} timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
               hidden={histHidden} onToggle={(k, show) => { show ? histHidden.delete(k) : histHidden.add(k); histHidden = new Set(histHidden) }} version={histVersion} />
           </section>
           <section class="card">
             <h2>Störungen – wer hat wann nicht geantwortet?<Help align="left" text={HELP.incidents} /></h2>
-            <IncidentList incidents={r.incidents || []} onSelect={(i) => histChart?.zoomTo(i.t - 60000, i.end + 60000)} />
+            <IncidentList zones={zoneDefs} incidents={r.incidents || []} onSelect={(i) => histChart?.zoomTo(i.t - 60000, i.end + 60000)} />
           </section>
           <section class="card">
             <h2>Ereignisprotokoll<Help align="left" text={HELP.events} /></h2>

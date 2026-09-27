@@ -16,6 +16,19 @@
     ['WAN', 'WAN – Internet/Ziele'],
   ]
 
+  const ROLES = [
+    ['LAN', 'wie LAN (Heimnetz)'],
+    ['ISP_EDGE', 'wie ISP_EDGE (Anbieter)'],
+    ['WAN', 'wie WAN (Ziel/Ausweichziel)'],
+    ['none', 'nicht werten'],
+  ]
+  function addZone() {
+    s.zones = [...s.zones, { id: 'z' + Date.now().toString(36), name: 'Neue Zone', color: '#8e44ad', role: 'none', description: '', builtin: false }]
+  }
+  function removeZone(id) {
+    s.zones = s.zones.filter((z) => z.id !== id)
+  }
+
   async function save() {
     saving = true
     err = ''
@@ -60,6 +73,31 @@
       </section>
 
       <section>
+        <h3>Zonen
+          <Help align="left" text={'Die Bereiche, in die Hops und manuelle Messpunkte eingeteilt werden. Die vier Standardzonen lassen sich umbenennen und umfärben. Eigene Zonen (z. B. „VPN“, „Server“, „Kunde A“) dienen der Gruppierung in Diagramm, Störungs-Matrix und Bericht; „Auswertung“ legt fest, nach welchen Regeln sie zählen:\n• wie LAN / ISP_EDGE: gehört zu diesem Abschnitt des Weges\n• wie WAN: Ausweichziel\n• nicht werten: nur anzeigen'} />
+        </h3>
+        <table class="grid zones">
+          <tr><th>Farbe</th><th>Name</th><th>Auswertung</th><th>Beschreibung</th><th></th></tr>
+          {#each s.zones as z (z.id)}
+            <tr>
+              <td><input type="color" bind:value={z.color} class="color" /></td>
+              <td><input bind:value={z.name} class="zname" /></td>
+              <td>
+                {#if z.builtin}<span class="muted">Standard ({z.id})</span>
+                {:else}
+                  <select bind:value={z.role}>{#each ROLES as [r, l]}<option value={r}>{l}</option>{/each}</select>
+                {/if}
+              </td>
+              <td><input bind:value={z.description} class="zdesc" placeholder="optional" /></td>
+              <td>{#if !z.builtin}<button class="del" title="Zone löschen" on:click={() => removeZone(z.id)}>✕</button>{/if}</td>
+            </tr>
+          {/each}
+        </table>
+        <button on:click={addZone}>+ Zone hinzufügen</button>
+        <p class="note">Messpunkte einer gelöschten Zone werden nicht mehr gewertet, bis sie einer anderen Zone zugeordnet sind. Hops der Route verwenden die drei Standardzonen.</p>
+      </section>
+
+      <section>
         <h3>Latenzspitzen je Zone
           <Help align="left" text={'Eine Messung gilt als Latenzspitze, wenn sie\n• mehr als „Faktor“ × so lang dauert wie üblich (Median der letzten Minute) UND mindestens „Mindestabstand“ ms darüber liegt,\n• ODER die feste Grenze überschreitet (0 = aus).\nBeispiel WAN: üblich 15 ms, Faktor 2, Mindestabstand 20 ms → ab 35 ms eine Spitze.'} />
         </h3>
@@ -74,7 +112,7 @@
             </tr>
           {/each}
         </table>
-        <p class="note">Manuelle Messpunkte verwenden die Werte ihrer Zone („keine“ → WAN-Werte).</p>
+        <p class="note">Manuelle Messpunkte verwenden die Werte ihrer Zone bzw. der Zone, wie die sie gewertet wird („nicht werten“ → WAN-Werte).</p>
       </section>
 
       <section>
@@ -157,7 +195,7 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; z-index: 500; }
-  .modal { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 12px; width: min(760px, 94vw); max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); }
+  .modal { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 12px; width: min(880px, 96vw); max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); }
   .top { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px 6px; }
   .top h2 { margin: 0; font-size: 17px; }
   .x { border: none; background: none; font-size: 16px; color: var(--muted); }
@@ -176,5 +214,11 @@
   .disabled { opacity: 0.45; pointer-events: none; }
   .play { padding: 0 6px; font-size: 10px; margin-left: 4px; }
   .grid td.c { text-align: center; }
+  .zones input.zname { width: 160px; }
+  .zones input.zdesc { width: 200px; }
+  .zones select { width: 200px; }
+  .zones input.color { width: 40px; height: 28px; padding: 0 2px; }
+  .del { padding: 1px 8px; font-size: 12px; }
+  .muted { color: var(--muted); font-size: 12px; }
   .range { width: 160px; padding: 0; vertical-align: middle; }
 </style>

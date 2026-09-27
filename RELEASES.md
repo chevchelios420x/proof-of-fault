@@ -6,6 +6,19 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.11.0 – 2026-09-27
+
+- **Störungs-Matrix nach Zonen gruppiert** (App und HTML-Bericht): Hops und
+  manuelle Messpunkte stehen unter der Überschrift ihrer Zone, in der Reihenfolge
+  der Zonenliste.
+- **Zonenliste in den Einstellungen (⚙ → Zonen)**: Die Standardzonen (LAN,
+  ISP_EDGE, WAN, Nicht gewertet) lassen sich umbenennen, umfärben und
+  beschreiben. **Eigene Zonen** (z. B. „VPN-Server“) können hinzugefügt werden;
+  „Auswertung“ legt fest, ob sie wie LAN, ISP_EDGE, WAN (Ausweichziel) oder gar
+  nicht gewertet werden. Manuelle Messpunkte können jeder Zone zugeordnet werden.
+- Diagramm-Legende, Zonen-Karten und Auswahlfelder verwenden die Namen und Farben
+  aus der Zonenliste.
+
 ## v0.10.1 – 2026-09-27
 
 - Das Zielfeld startet immer mit dem zuletzt verwendeten Ziel (aus der Datenbank,

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chevchelios420x/proof-of-fault/internal/config"
 	"github.com/chevchelios420x/proof-of-fault/internal/monitor"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
@@ -119,7 +120,7 @@ th{background:#f1f1f1}
 .c-ok{background:#52b788}.c-s{background:#f4a261}.c-x{background:#d62828}.c-n{background:#ddd}
 table.mx{width:auto;border-collapse:separate;border-spacing:1px}table.mx td{padding:0;border:none;width:9px;height:14px}
 table.mx td.lbl{padding:0 8px 0 0;width:auto;white-space:nowrap;text-align:left;font-size:12px}
-table.mx td.pre{opacity:.45}.inc{page-break-inside:avoid;margin-bottom:18px}.mxwrap{overflow-x:auto}
+table.mx td.pre{opacity:.45}table.mx td.grp{font-size:11px;font-weight:700;text-transform:uppercase;color:#666;padding:6px 0 2px 6px;text-align:left;width:auto}.inc{page-break-inside:avoid;margin-bottom:18px}.mxwrap{overflow-x:auto}
 .inclist td{text-align:left}
 .sev-crit{background:#fde2e2}.sev-warn{background:#fff6e0}.sev-info td{color:#666}.sev-ok{background:#e9f7ef}
 .chart{width:100%;height:auto;border:1px solid #eee}
@@ -157,7 +158,7 @@ small{color:#666}
 {{range $i, $in := .R.Incidents}}{{if lt $i 200}}
 <div class="inc" id="inc{{$in.ID}}"><h3>Störung {{inc $i}}: {{$in.Title}}</h3>
 <p><b>{{ts $in.T}} – {{ts $in.End}}</b> · {{$in.Detail}}</p>
-{{matrix $in}}</div>
+{{matrix $in $.R.ZoneDefs}}</div>
 {{end}}{{end}}
 {{if gt (len .R.Incidents) 200}}<p><small>Matrix nur für die ersten 200 Störungen; alle sind in der Liste oben und im Ereignis-Export enthalten.</small></p>{{end}}
 {{else}}<p>Keine.</p>{{end}}
@@ -232,28 +233,71 @@ func WriteEventsCSV(w io.Writer, events []store.Event) error {
 }
 
 // matrixHTML renders the per-second state matrix of an incident.
-func matrixHTML(in store.Incident) template.HTML {
+func matrixHTML(in store.Incident, zones []config.ZoneDef) template.HTML {
 	var b strings.Builder
 	b.WriteString(`<div class="mxwrap"><table class="mx">`)
-	state := map[byte]string{'.': "c-ok", 's': "c-s", 'x': "c-x", '-': "c-n"}
-	text := map[byte]string{'.': "antwortet", 's': "langsam", 'x': "keine Antwort", '-': "nicht gemessen"}
-	for _, s := range in.Series {
-		fmt.Fprintf(&b, `<tr><td class="lbl">%s</td>`, template.HTMLEscapeString(s.Label))
-		for i := 0; i < len(s.States) && i < len(in.Columns); i++ {
-			c := s.States[i]
-			pre := ""
-			if i < in.PreRoll || i >= len(in.Columns)-in.PostRoll {
-				pre = " pre"
-			}
-			rtt := ""
-			if i < len(s.RTT) && s.RTT[i] >= 0 {
-				rtt = fmt.Sprintf(" · %.1f ms", s.RTT[i])
-			}
-			fmt.Fprintf(&b, `<td class="%s%s" title="%s · %s%s"></td>`, state[c], pre,
-				time.UnixMilli(in.Columns[i]).Format("15:04:05"), text[c], rtt)
+	cols := len(in.Columns) + 1
+	for _, g := range groupSeries(in.Series, zones) {
+		fmt.Fprintf(&b, `<tr><td class="grp" colspan="%d" style="border-left:4px solid %s">%s</td></tr>`, cols,
+			template.HTMLEscapeString(g.color), template.HTMLEscapeString(g.name))
+		for _, s := range g.series {
+			writeMatrixRow(&b, in, s)
 		}
-		b.WriteString("</tr>")
 	}
 	b.WriteString("</table></div>")
 	return template.HTML(b.String())
+}
+
+type seriesGroup struct {
+	name, color string
+	series      []store.IncidentSeries
+}
+
+// groupSeries orders incident rows by zone (in the configured zone order;
+// unknown zones last), keeping the path order within a zone.
+func groupSeries(series []store.IncidentSeries, zones []config.ZoneDef) []seriesGroup {
+	var out []seriesGroup
+	used := map[int]bool{}
+	for _, z := range zones {
+		g := seriesGroup{name: z.Name, color: z.Color}
+		for i, s := range series {
+			if s.Zone == z.ID {
+				g.series = append(g.series, s)
+				used[i] = true
+			}
+		}
+		if len(g.series) > 0 {
+			out = append(out, g)
+		}
+	}
+	rest := seriesGroup{name: "Sonstige", color: "#888888"}
+	for i, s := range series {
+		if !used[i] {
+			rest.series = append(rest.series, s)
+		}
+	}
+	if len(rest.series) > 0 {
+		out = append(out, rest)
+	}
+	return out
+}
+
+func writeMatrixRow(b *strings.Builder, in store.Incident, s store.IncidentSeries) {
+	state := map[byte]string{'.': "c-ok", 's': "c-s", 'x': "c-x", '-': "c-n"}
+	text := map[byte]string{'.': "antwortet", 's': "langsam", 'x': "keine Antwort", '-': "nicht gemessen"}
+	fmt.Fprintf(b, `<tr><td class="lbl">%s</td>`, template.HTMLEscapeString(s.Label))
+	for i := 0; i < len(s.States) && i < len(in.Columns); i++ {
+		c := s.States[i]
+		pre := ""
+		if i < in.PreRoll || i >= len(in.Columns)-in.PostRoll {
+			pre = " pre"
+		}
+		rtt := ""
+		if i < len(s.RTT) && s.RTT[i] >= 0 {
+			rtt = fmt.Sprintf(" · %.1f ms", s.RTT[i])
+		}
+		fmt.Fprintf(b, `<td class="%s%s" title="%s · %s%s"></td>`, state[c], pre,
+			time.UnixMilli(in.Columns[i]).Format("15:04:05"), text[c], rtt)
+	}
+	b.WriteString("</tr>")
 }

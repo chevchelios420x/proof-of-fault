@@ -1,6 +1,8 @@
 <script>
   export let incidents = []
   export let onSelect = (inc) => {} // e.g. zoom the chart to the incident
+  export let zones = DEFAULT_ZONES
+  import { DEFAULT_ZONES, groupBy } from './zones.js'
 
   const CLASS = {
     lan: 'Heimnetz', isp: 'Anbieter-Zugang', isp_core: 'Anbieter-Netz/Internet',
@@ -51,7 +53,9 @@
               <td class="tick" class:pre={i < inc.preRoll || i >= inc.columns.length - inc.postRoll}>{i % 5 === 0 ? t(c).slice(3) : ''}</td>
             {/each}
           </tr>
-          {#each inc.series as s}
+          {#each groupBy(inc.series, (s) => s.zone, zones) as grp}
+          <tr><td class="grp" colspan={inc.columns.length + 1} style="border-left-color:{grp.zone.color}">{grp.zone.name}</td></tr>
+          {#each grp.items as s}
             <tr>
               <td class="lbl" class:target={s.target} class:custom={s.custom}>{s.label}{#if s.lost} <span class="lostn">{s.lost} s weg</span>{/if}</td>
               {#each s.states.split('') as st, i}
@@ -59,6 +63,7 @@
                   title="{t(inc.columns[i])} · {STATE[st]}{s.rtt[i] >= 0 ? ' · ' + s.rtt[i].toFixed(1) + ' ms' : ''}"></td>
               {/each}
             </tr>
+          {/each}
           {/each}
         </table>
       </div>
@@ -85,6 +90,7 @@
   td.lbl.target { font-weight: 600; }
   td.lbl.custom { font-style: italic; }
   .lostn { color: #d62828; font-style: normal; font-size: 11px; margin-left: 6px; }
+  td.grp { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); text-align: left; padding: 6px 0 2px 6px; border-left: 3px solid; }
   td.tick { font-size: 9px; color: var(--muted); white-space: nowrap; height: 12px; }
   .cell, i.cell { width: 9px; min-width: 9px; height: 14px; border-radius: 2px; display: table-cell; }
   i.cell { display: inline-block; width: 10px; height: 10px; vertical-align: middle; }
