@@ -6,6 +6,12 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.10.1 – 2026-09-27
+
+- Das Zielfeld startet immer mit dem zuletzt verwendeten Ziel (aus der Datenbank,
+  bleibt also auch nach Updates erhalten) statt mit 1.1.1.1. Läuft bereits eine
+  Messung, wird deren Ziel angezeigt.
+
 ## v0.10.0 – 2026-09-27
 
 - **Signaltöne** (⚙ Einstellungen → „Signaltöne“): Ton bei Routenwechsel und pro

@@ -45,7 +45,8 @@
     } catch (e) { exportMsg = 'Fehler: ' + e }
   }
   let version = ''
-  let target = localStorage.getItem('target') || '1.1.1.1'
+  let target = ''
+  try { target = localStorage.getItem('target') || '' } catch {}
   let status = { state: 'idle', reps: [], hops: [] }
   let stats = {}
   let outages = [] // live outage log
@@ -151,10 +152,13 @@
     version = await GetVersion()
     try {
       settings = await GetSettings()
+      // Last used target is stored in the database, so it survives updates.
+      if (settings.lastTarget) target = settings.lastTarget
       applyTheme(settings.theme)
       liveWindow = settings.defaultWindowMin
     } catch {}
     status = await GetStatus()
+    if (status.target) target = status.target
     if (status.state === 'error') error = status.message
     EventsOn('status', (s) => {
       status = s
