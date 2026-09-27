@@ -16,6 +16,10 @@
   let paused = false
   let zoomed = false // user zoomed in: keep the x range on updates
   let scaleMode = 'auto' // auto | linear | log
+  // Live view: visible time window in minutes (0 = whole session).
+  let windowMin = 30
+  try { windowMin = Number(localStorage.getItem('liveWindowMin') ?? 30) } catch {}
+  $: try { localStorage.setItem('liveWindowMin', String(windowMin)) } catch {}
   let logActive = false
   let cursorT = null
   let cursorVals = {}
@@ -114,6 +118,7 @@
       },
     }
     plot = new uPlot(opts, data(), el)
+    applyWindow()
   }
 
   // Log scale cannot show 0 ms; tiny values are lifted to 0.1 ms.
@@ -126,8 +131,21 @@
   function refresh() {
     if (!plot || (live && paused)) return
     if (wantLog() !== logActive) return build()
-    plot.setData(data(), !zoomed)
+    const win = live && windowMin > 0 && !zoomed
+    plot.setData(data(), !zoomed && !win)
+    applyWindow()
   }
+
+  // In live mode show only the last windowMin minutes (unless zoomed).
+  function applyWindow() {
+    if (!plot || !live || zoomed || !(windowMin > 0)) return
+    const xs = plot.data[0]
+    if (!xs.length) return
+    const max = xs[xs.length - 1]
+    plot.setScale('x', { min: max - windowMin * 60, max })
+  }
+  let lastWindow = windowMin
+  $: if (windowMin !== lastWindow) { lastWindow = windowMin; zoomed = false; if (plot) { plot.setData(data(), true); applyWindow() } }
 
   function toggle(k) {
     const show = hidden.has(k)
@@ -172,6 +190,18 @@
 
 <div class="tools">
   <span class="time">{cursorT ? new Date(cursorT * 1000).toLocaleString('de-DE') : 'Maus über das Diagramm bewegen für Einzelwerte'}</span>
+  {#if live}
+    <label class="win">Zeitraum
+      <select bind:value={windowMin}>
+        <option value={5}>5 min</option>
+        <option value={30}>30 min</option>
+        <option value={60}>60 min</option>
+        <option value={90}>90 min</option>
+        <option value={0}>gesamte Messung</option>
+      </select>
+      <Help text={'Wie viel Zeit das Live-Diagramm zeigt – es läuft mit den neuesten Messwerten mit. Ältere Daten gehen nicht verloren: „gesamte Messung“ wählen oder unter „Verlauf & Berichte“ ansehen. Ein Zoom per Ziehen hält die Ansicht fest, Doppelklick kehrt zum gewählten Zeitraum zurück.'} />
+    </label>
+  {/if}
   <label>Skala
     <select bind:value={scaleMode}>
       <option value="auto">automatisch</option>
@@ -210,6 +240,7 @@
   .tools { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 4px; gap: 10px; }
   .tools .time { color: var(--muted); }
   .tools select { padding: 2px 6px; font-size: 12px; }
+  .tools .win { margin-left: auto; }
   .chart { width: 100%; min-height: 340px; }
   .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 6px; }
   .group { display: flex; flex-direction: column; gap: 2px; min-width: 200px; }

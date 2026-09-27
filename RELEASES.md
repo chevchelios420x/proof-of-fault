@@ -6,6 +6,13 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.8.0 – 2026-09-27
+
+- Live-Latenzverlauf mit wählbarem Zeitraum: 5, 30, 60 oder 90 Minuten oder die
+  gesamte Messung (Standard 30 min, wird gemerkt). Das Diagramm läuft mit den
+  neuesten Werten mit; ein Zoom per Ziehen hält die Ansicht fest, Doppelklick
+  kehrt zum gewählten Zeitraum zurück.
+
 ## v0.7.0 – 2026-09-27
 
 - **Manuelle Messpunkte fließen in die Auswertung ihrer Zone ein**: LAN/ISP_EDGE-
