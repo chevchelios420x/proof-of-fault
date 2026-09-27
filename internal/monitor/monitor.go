@@ -283,6 +283,25 @@ func (m *Monitor) SaveCustomPoint(p store.CustomPoint) error {
 	return nil
 }
 
+// AddSuggestedPoints adds the suggested backup targets (1.1.1.1, 9.9.9.9,
+// 8.8.8.8) that are not in the list yet, switched off.
+func (m *Monitor) AddSuggestedPoints() error {
+	have := map[string]bool{}
+	pts, _ := m.store.CustomPoints()
+	for _, p := range pts {
+		have[p.Host] = true
+	}
+	for _, p := range store.DefaultCustomPoints {
+		if !have[p.Host] {
+			if err := m.store.SaveCustomPoint(p); err != nil {
+				return err
+			}
+		}
+	}
+	m.applyCustom()
+	return nil
+}
+
 // DeleteCustomPoint removes a user-defined measuring point.
 func (m *Monitor) DeleteCustomPoint(host string) error {
 	if err := m.store.DeleteCustomPoint(host); err != nil {
@@ -592,8 +611,8 @@ func (r *runner) setCustom(cs []CustomStatus) {
 	r.custom = nil
 	for _, c := range cs {
 		a, err := netip.ParseAddr(c.IP)
-		if !c.Enabled || err != nil {
-			continue
+		if (!c.Enabled && !c.TCP) || err != nil {
+			continue // ping and TCP check both switched off
 		}
 		label := c.Host
 		if c.Name != "" {
@@ -606,8 +625,10 @@ func (r *runner) setCustom(cs []CustomStatus) {
 		if role == ZoneNone {
 			label += " – nicht gewertet"
 		}
-		r.custom = append(r.custom, customPoint{addr: a,
-			s: series{key: DevKey(c.Host), zone: path.Zone(role), group: c.Zone, addr: c.IP, label: "Gerät " + label}})
+		if c.Enabled {
+			r.custom = append(r.custom, customPoint{addr: a,
+				s: series{key: DevKey(c.Host), zone: path.Zone(role), group: c.Zone, addr: c.IP, label: "Gerät " + label}})
+		}
 		if c.TCP {
 			port := c.Port
 			if port <= 0 {

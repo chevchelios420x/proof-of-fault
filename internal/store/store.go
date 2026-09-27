@@ -134,6 +134,7 @@ func Open(path string) (*Store, error) {
 	// Migrations for databases of older versions (errors = column exists).
 	db.Exec(`ALTER TABLE custom_point ADD COLUMN tcp INTEGER NOT NULL DEFAULT 0`)
 	db.Exec(`ALTER TABLE custom_point ADD COLUMN port INTEGER NOT NULL DEFAULT 443`)
+	seedCustomPoints(db)
 	s := &Store{db: db, stop: make(chan struct{}), done: make(chan struct{})}
 	go s.flushLoop()
 	return s, nil
@@ -665,4 +666,25 @@ func (s *Store) DeleteSessionsBefore(t time.Time) (int, error) {
 		s.db.Exec(`VACUUM`)
 	}
 	return len(ids), nil
+}
+
+// DefaultCustomPoints are suggested once as backup targets (switched off, so
+// nothing is measured until the user enables them).
+var DefaultCustomPoints = []CustomPoint{
+	{Host: "1.1.1.1", Name: "Cloudflare DNS", Zone: "WAN", Port: 443},
+	{Host: "9.9.9.9", Name: "Quad9 DNS", Zone: "WAN", Port: 443},
+	{Host: "8.8.8.8", Name: "Google DNS", Zone: "WAN", Port: 443},
+}
+
+// seedCustomPoints adds the suggestions exactly once per database; entries
+// the user deleted do not come back.
+func seedCustomPoints(db *sql.DB) {
+	var done string
+	if db.QueryRow(`SELECT value FROM setting WHERE key='seeded_custom'`).Scan(&done) == nil {
+		return
+	}
+	for _, p := range DefaultCustomPoints {
+		db.Exec(`INSERT OR IGNORE INTO custom_point(host, name, zone, enabled, tcp, port) VALUES(?,?,?,0,0,?)`, p.Host, p.Name, p.Zone, p.Port)
+	}
+	db.Exec(`INSERT INTO setting(key, value) VALUES('seeded_custom', '1')`)
 }

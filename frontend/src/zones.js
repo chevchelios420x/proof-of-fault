@@ -56,7 +56,7 @@ export function colorMap(hops = [], reps = [], custom = []) {
   for (const r of reps) if (!keys.includes(r.zone)) keys.push(r.zone)
   for (const c of custom) {
     keys.push(devKey(c.host))
-    if (c.tcp) keys.push('tcp:' + c.host)
+    keys.push('tcp:' + c.host) // always, so colors stay stable when toggling
   }
   return Object.fromEntries(keys.map((k, i) => [k, PALETTE[i % PALETTE.length]]))
 }
@@ -88,8 +88,8 @@ export function buildSeries({ hops = [], reps = [], watched = [], names = {}, ke
   }
   custom.forEach((c) => {
     const k = devKey(c.host)
-    if (!c.enabled || !c.ip || (keys && !keys.includes(k))) return
-    out.push({ key: k, addr: c.ip, ttl: 0, group: c.zone || 'none', label: `${c.name || c.host}`, color: colors[k], dash: true })
+    if (!c.ip) return
+    if (c.enabled && (!keys || keys.includes(k))) out.push({ key: k, addr: c.ip, ttl: 0, group: c.zone || 'none', label: `${c.name || c.host}`, color: colors[k], dash: true })
     const tk = 'tcp:' + c.host
     if (c.tcp && (!keys || keys.includes(tk))) {
       out.push({ key: tk, addr: c.ip, ttl: 0, group: c.zone || 'none', label: `${c.name || c.host} · TCP:${c.port || 443}`, color: colors[tk], dash: true, dot: true })

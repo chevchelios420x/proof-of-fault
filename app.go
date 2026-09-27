@@ -147,6 +147,14 @@ func (a *App) SaveCustomPoint(host, name, zone string, enabled, tcp bool, port i
 	return a.monitor.SaveCustomPoint(store.CustomPoint{Host: host, Name: name, Zone: zone, Enabled: enabled, TCP: tcp, Port: port})
 }
 
+// AddSuggestedPoints re-adds the suggested backup targets.
+func (a *App) AddSuggestedPoints() error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.monitor.AddSuggestedPoints()
+}
+
 // DeleteCustomPoint removes a user-defined measuring point.
 func (a *App) DeleteCustomPoint(host string) error {
 	if err := a.ready(); err != nil {

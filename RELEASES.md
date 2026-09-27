@@ -6,6 +6,17 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.13.0 – 2026-09-27
+
+- **Vorgeschlagene Ausweichziele**: 1.1.1.1 (Cloudflare), 9.9.9.9 (Quad9) und
+  8.8.8.8 (Google) stehen einmalig als manuelle Messpunkte in Zone WAN in der
+  Liste – ausgeschaltet, bis man sie aktiviert. Gelöschte Vorschläge lassen sich
+  per Button wieder hinzufügen.
+- **Ping und TCP-Check je Host getrennt**: Schalter „an/aus“ (misst überhaupt
+  bzw. gar nicht, auch nicht gewertet) und daneben ein Häkchen für die Linie im
+  Diagramm (nur ein-/ausblenden, die Messung läuft weiter). Ein Host kann auch
+  nur per TCP überwacht werden.
+
 ## v0.12.0 – 2026-09-27
 
 - **TCP-Check für manuelle Messpunkte** (Spalte „TCP-Check“, Port wählbar,

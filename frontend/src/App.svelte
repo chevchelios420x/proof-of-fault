@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, GetSettings, SaveSettings, DefaultSettings, DeleteSession } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
@@ -81,13 +81,13 @@
   $: liveSeries = buildSeries({ hops: status.hops || [], reps: status.reps || [], watched, names, custom })
 
   // User-defined measuring points (e.g. other devices in the LAN).
-  let newHost = '', newName = '', newZone = '', newTcp = false, newPort = 443
+  let newHost = '', newName = '', newZone = '', newPing = true, newTcp = false, newPort = 443
   let customBusy = false
   async function addCustom() {
     customBusy = true
     try {
-      await SaveCustomPoint(newHost.trim(), newName.trim(), newZone, true, newTcp, Number(newPort) || 443)
-      newHost = ''; newName = ''; newZone = ''; newTcp = false; newPort = 443
+      await SaveCustomPoint(newHost.trim(), newName.trim(), newZone, newPing, newTcp, Number(newPort) || 443)
+      newHost = ''; newName = ''; newZone = ''; newPing = true; newTcp = false; newPort = 443
     } catch (e) { error = String(e) }
     customBusy = false
   }
@@ -359,9 +359,12 @@
           <h2 class="sub">Weitere Messpunkte (manuell)<Help align="left" text={HELP.custom} /></h2>
           <p class="muted small">Beliebige Geräte oder Adressen zusätzlich jede Sekunde anpingen, z. B. ein zweiter Router/Modem, Repeater, NAS oder ein anderer Server. Werden dauerhaft gespeichert und bei jeder Messung mitgemessen.</p>
           <table class="route">
-            <tr><th>Adresse / Host<Help align="left" text={HELP.customAuto} /></th><th>Name<Help text={HELP.name} /></th><th>Zone<Help text={HELP.customZone} /></th><th>TCP-Check<Help text={HELP.tcp} /></th><th></th><th>Diagramm<Help align="right" text={HELP.diagram} /></th></tr>
-            {#each custom as c, i (c.host)}
-              <tr>
+            <tr>
+              <th>Adresse / Host<Help align="left" text={HELP.customAuto} /></th><th>Name<Help text={HELP.name} /></th><th>Zone<Help text={HELP.customZone} /></th>
+              <th class="c">Ping<Help text={HELP.pingSwitch} /></th><th class="c">TCP-Check<Help text={HELP.tcp} /></th><th></th>
+            </tr>
+            {#each custom as c (c.host)}
+              <tr class:inactive={!c.enabled && !c.tcp}>
                 <td>{c.host}{#if c.ip && c.ip !== c.host}<br /><small class="muted">{c.ip}</small>{/if}{#if c.error}<br /><small class="bad">{c.error}</small>{/if}</td>
                 <td><input class="name" value={c.name} placeholder="optional" on:change={(e) => saveCustom(c, { name: e.target.value })}
                   on:keydown={(e) => e.key === 'Enter' && e.target.blur()} /></td>
@@ -370,20 +373,22 @@
                     {#each zoneDefs as z}<option value={z.id}>{z.name}</option>{/each}
                   </select>
                 </td>
-                <td class="tcp">
-                  <input type="checkbox" checked={c.tcp} on:change={(e) => saveCustom(c, { tcp: e.target.checked })} title="Zusätzlich TCP-Verbindungsaufbau prüfen" />
-                  {#if c.tcp}
-                    <input class="port" type="number" min="1" max="65535" value={c.port || 443} on:change={(e) => saveCustom(c, { port: e.target.value })} title="Port" />
-                    <span class="dot" style="background:{colors['tcp:' + c.host]}"></span>
-                  {/if}
-                </td>
-                <td><button class="del" title="Messpunkt entfernen" on:click={() => removeCustom(c)}>✕</button></td>
-                <td>
-                  <label class="toggle" title="Messen und im Diagramm anzeigen">
-                    <input type="checkbox" checked={c.enabled} on:change={(e) => saveCustom(c, { enabled: e.target.checked })} />
+                <td class="c nowrap">
+                  <label class="switch" title="Ping messen an/aus"><input type="checkbox" checked={c.enabled} on:change={(e) => saveCustom(c, { enabled: e.target.checked })} /><span></span></label>
+                  <label class="toggle" class:off={!c.enabled} title="Linie im Diagramm anzeigen">
+                    <input type="checkbox" disabled={!c.enabled} checked={c.enabled && !hidden.has(devKey(c.host))} on:change={(e) => setHidden(devKey(c.host), !e.target.checked)} />
                     <span class="dot" style="background:{colors[devKey(c.host)]}"></span>
                   </label>
                 </td>
+                <td class="c nowrap">
+                  <label class="switch" title="TCP-Check an/aus"><input type="checkbox" checked={c.tcp} on:change={(e) => saveCustom(c, { tcp: e.target.checked })} /><span></span></label>
+                  <input class="port" type="number" min="1" max="65535" value={c.port || 443} disabled={!c.tcp} on:change={(e) => saveCustom(c, { port: e.target.value })} title="Port" />
+                  <label class="toggle" class:off={!c.tcp} title="Linie im Diagramm anzeigen">
+                    <input type="checkbox" disabled={!c.tcp} checked={c.tcp && !hidden.has('tcp:' + c.host)} on:change={(e) => setHidden('tcp:' + c.host, !e.target.checked)} />
+                    <span class="dot dotted" style="border-color:{colors['tcp:' + c.host]}"></span>
+                  </label>
+                </td>
+                <td><button class="del" title="Messpunkt entfernen" on:click={() => removeCustom(c)}>✕</button></td>
               </tr>
             {/each}
             <tr>
@@ -395,13 +400,17 @@
                   {#each zoneDefs as z}<option value={z.id}>{z.name}</option>{/each}
                 </select>
               </td>
-              <td class="tcp">
-                <input type="checkbox" bind:checked={newTcp} title="Zusätzlich TCP-Verbindungsaufbau prüfen" />
-                {#if newTcp}<input class="port" type="number" min="1" max="65535" bind:value={newPort} title="Port" />{/if}
+              <td class="c"><label class="switch" title="Ping messen"><input type="checkbox" bind:checked={newPing} /><span></span></label></td>
+              <td class="c nowrap">
+                <label class="switch" title="TCP-Check"><input type="checkbox" bind:checked={newTcp} /><span></span></label>
+                <input class="port" type="number" min="1" max="65535" bind:value={newPort} disabled={!newTcp} title="Port" />
               </td>
-              <td colspan="2"><button class="primary" disabled={!newHost.trim() || customBusy} on:click={addCustom}>Hinzufügen</button></td>
+              <td><button class="primary" disabled={!newHost.trim() || customBusy} on:click={addCustom}>Hinzufügen</button></td>
             </tr>
           </table>
+          {#if ['1.1.1.1', '9.9.9.9', '8.8.8.8'].some((h) => !custom.find((c) => c.host === h))}
+            <button class="suggest" on:click={() => AddSuggestedPoints().catch((e) => (error = String(e)))}>+ Vorschläge 1.1.1.1 / 9.9.9.9 / 8.8.8.8 hinzufügen</button>
+          {/if}
         </section>
       </div>
     {/if}
@@ -502,7 +511,18 @@
   .route .name { width: 130px; padding: 2px 6px; font-size: 12px; }
   .sub { margin-top: 18px; }
   .del { padding: 1px 8px; font-size: 12px; }
-  td.tcp { white-space: nowrap; }
+  td.nowrap { white-space: nowrap; }
+  th.c, td.c { text-align: center; }
+  tr.inactive td { opacity: 0.6; }
+  .suggest { margin-top: 8px; font-size: 12px; padding: 4px 10px; }
+  .toggle.off { opacity: 0.35; }
+  .dot.dotted { background: none; border: 2px dotted; width: 7px; height: 7px; }
+  .switch { position: relative; display: inline-block; width: 30px; height: 16px; vertical-align: middle; margin-right: 6px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: var(--none-cell); border-radius: 16px; transition: 0.15s; cursor: pointer; }
+  .switch span::before { content: ''; position: absolute; width: 12px; height: 12px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: 0.15s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::before { transform: translateX(14px); }
   .port { width: 70px; padding: 2px 6px; font-size: 12px; margin-left: 4px; }
   .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
