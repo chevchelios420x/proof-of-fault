@@ -14,7 +14,7 @@ export const fmtDur = (s) => {
 
 // One clearly distinguishable color per chart line. Red is left out (it
 // marks losses); zones are shown by grouping, not by color.
-const PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#17becf', '#8c564b', '#e377c2', '#222222', '#bcbd22', '#000080', '#7f7f7f', '#00a087', '#b8860b', '#6a5acd']
+const PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#17becf', '#8c564b', '#e377c2', '#bcbd22', '#7f7f7f', '#00a087', '#daa520', '#6a5acd', '#ff69b4', '#4682b4']
 
 export const hopKey = (addr) => 'hop:' + addr
 export const isHopKey = (k) => k.startsWith('hop:')

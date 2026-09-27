@@ -6,6 +6,24 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.9.0 – 2026-09-27
+
+- **Einstellungen (⚙ oben rechts)**, dauerhaft gespeichert und sofort wirksam:
+  - Latenzspitzen **je Zone**: Faktor × üblicher Wert, Mindestabstand in ms und
+    optional eine feste Grenze in ms (Standard: LAN 3× / +15 ms / 100 ms,
+    ISP_EDGE 2× / +20 ms / 150 ms, WAN 2× / +20 ms / 250 ms).
+  - Ausfall ab N Sekunden, Timeout, Vor-/Nachlauf von Störungen,
+    Routenprüf-Intervall, Grenze „hohe Latenz“ im Bericht.
+  - Farbschema, Standard-Zeitraum des Live-Diagramms.
+- **Dark Mode**: automatisch nach Windows-Einstellung oder fest hell/dunkel.
+- **Vereinfachungen**:
+  - Standby wird während einer Messung verhindert (abschaltbar), damit keine
+    Lücken im Nachweis entstehen.
+  - Optional: beim Start der App die letzte Messung automatisch fortsetzen.
+  - Optional: alte Messungen nach N Tagen automatisch löschen.
+  - Einzelne Messungen im Verlauf löschen (🗑).
+- Farbpalette für dunklen Hintergrund angepasst (kein Schwarz/Dunkelblau mehr).
+
 ## v0.8.0 – 2026-09-27
 
 - Live-Latenzverlauf mit wählbarem Zeitraum: 5, 30, 60 oder 90 Minuten oder die

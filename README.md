@@ -18,7 +18,7 @@ Status: **Windows** (IPv4). Linux/macOS folgen (siehe `internal/probe`).
 
 ## Benutzung (Windows)
 
-Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.8.0.exe`](build/bin/proof-of-fault-v0.8.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
+Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.9.0.exe`](build/bin/proof-of-fault-v0.9.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
 
 1. `proof-of-fault.exe` starten. Es sind keine Admin-Rechte und keine Installation
    nötig; die WebView2-Runtime ist bei Windows 10/11 vorhanden.
@@ -48,6 +48,10 @@ und im HTML-Bericht.
 Hosts gespeichert (wer hat wann nicht geantwortet). Manuelle Hosts in der Zone WAN
 dienen als Ausweichziele – so unterscheidet die App „nur das Ziel war weg“ von
 „das Internet war weg“.
+
+**Einstellungen (⚙):** Schwellwerte für Latenzspitzen je Zone, Ausfall-Grenze,
+Timeout, Farbschema (hell/dunkel/automatisch), Standby-Sperre während der Messung,
+automatisches Fortsetzen beim Start und automatisches Löschen alter Messungen.
 
 Tipps für belastbare Nachweise: Den PC **per LAN-Kabel** anschließen (sonst sieht der
 Provider WLAN als Ursache). Mehrere Stunden bis Tage messen und den Energiesparmodus

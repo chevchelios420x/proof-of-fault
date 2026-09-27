@@ -12,6 +12,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/chevchelios420x/proof-of-fault/internal/config"
 )
 
 const schema = `
@@ -75,6 +77,10 @@ CREATE TABLE IF NOT EXISTS incident (
 	data       TEXT NOT NULL      -- JSON: Incident
 );
 CREATE INDEX IF NOT EXISTS incident_idx ON incident(session_id, start_ns);
+CREATE TABLE IF NOT EXISTS setting (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS outage (
 	session_id INTEGER NOT NULL,
 	zone       TEXT NOT NULL,     -- zone the fault is attributed to
@@ -586,4 +592,69 @@ func (s *Store) Incidents(sid int64) ([]Incident, error) {
 		out = append(out, in)
 	}
 	return out, rows.Err()
+}
+
+// Settings returns the stored settings (defaults for missing values).
+func (s *Store) Settings() config.Settings {
+	var raw string
+	cfg := config.Defaults()
+	if err := s.db.QueryRow(`SELECT value FROM setting WHERE key='settings'`).Scan(&raw); err == nil {
+		json.Unmarshal([]byte(raw), &cfg)
+	}
+	return cfg.Normalize()
+}
+
+// SaveSettings stores the settings.
+func (s *Store) SaveSettings(cfg config.Settings) error {
+	b, err := json.Marshal(cfg.Normalize())
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO setting(key, value) VALUES('settings', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(b))
+	return err
+}
+
+// DeleteSession removes a session with all its data.
+func (s *Store) DeleteSession(id int64) error {
+	s.flush()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, t := range []string{"sample", "path_snapshot", "outage", "event", "incident"} {
+		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE session_id=?`, id); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM session WHERE id=?`, id); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteSessionsBefore removes finished sessions that started before t and
+// returns how many were deleted.
+func (s *Store) DeleteSessionsBefore(t time.Time) (int, error) {
+	rows, err := s.db.Query(`SELECT id FROM session WHERE started_ns < ? AND ended_ns IS NOT NULL`, t.UnixNano())
+	if err != nil {
+		return 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	for _, id := range ids {
+		if err := s.DeleteSession(id); err != nil {
+			return 0, err
+		}
+	}
+	if len(ids) > 0 {
+		s.db.Exec(`VACUUM`)
+	}
+	return len(ids), nil
 }

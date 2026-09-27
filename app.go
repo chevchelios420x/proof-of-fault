@@ -8,6 +8,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/chevchelios420x/proof-of-fault/internal/config"
 	"github.com/chevchelios420x/proof-of-fault/internal/monitor"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/probe"
@@ -45,6 +46,48 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.monitor = monitor.New(p, st, func(ev string, data any) { runtime.EventsEmit(ctx, ev, data) })
+
+	cfg := a.monitor.Settings()
+	if cfg.RetentionDays > 0 {
+		st.DeleteSessionsBefore(time.Now().AddDate(0, 0, -cfg.RetentionDays))
+	}
+	if cfg.AutoStart && cfg.LastTarget != "" {
+		a.monitor.Start(cfg.LastTarget)
+	}
+}
+
+// GetSettings returns the current settings.
+func (a *App) GetSettings() (config.Settings, error) {
+	if err := a.ready(); err != nil {
+		return config.Defaults(), err
+	}
+	return a.monitor.Settings(), nil
+}
+
+// SaveSettings stores and applies settings.
+func (a *App) SaveSettings(cfg config.Settings) (config.Settings, error) {
+	if err := a.ready(); err != nil {
+		return cfg, err
+	}
+	cfg.LastTarget = a.monitor.Settings().LastTarget
+	if err := a.monitor.SaveSettings(cfg); err != nil {
+		return cfg, err
+	}
+	return a.monitor.Settings(), nil
+}
+
+// DefaultSettings returns the factory settings (for "reset").
+func (a *App) DefaultSettings() config.Settings { return config.Defaults() }
+
+// DeleteSession removes a stored measurement (not the running one).
+func (a *App) DeleteSession(id int64) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	if st := a.monitor.Status(); st.SessionID == id && st.State != "idle" && st.State != "error" {
+		return fmt.Errorf("die laufende Messung kann nicht gelöscht werden")
+	}
+	return a.store.DeleteSession(id)
 }
 
 func (a *App) shutdown(context.Context) {

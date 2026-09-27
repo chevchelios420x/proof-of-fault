@@ -28,11 +28,9 @@ const (
 )
 
 const (
-	targetTTL     = 1 << 10 // sort key of the target (behind every hop)
-	episodeGap    = 2       // ticks without the condition that close an episode
-	baselineN     = 60      // successful samples forming a series' baseline
-	spikeFactor   = 2.0     // spike: RTT > factor × baseline …
-	spikeMinDelta = 20 * time.Millisecond
+	targetTTL  = 1 << 10 // sort key of the target (behind every hop)
+	episodeGap = 2       // ticks without the condition that close an episode
+	baselineN  = 60      // successful samples forming a series' baseline
 )
 
 // series describes one probed line (zone measuring point or watched hop).
@@ -157,7 +155,7 @@ func (r *runner) finishTick(t *tick) {
 		}
 		m := b.median()
 		base[i] = m
-		if m > 0 && float64(rtt) > spikeFactor*float64(m) && rtt-m > spikeMinDelta {
+		if r.cfg.IsSpike(string(s.zone), rtt, m) {
 			spiked[i] = true
 		}
 		b.add(rtt)

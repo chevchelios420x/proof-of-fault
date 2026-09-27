@@ -11,7 +11,7 @@
   .help {
     display: inline-flex; align-items: center; justify-content: center;
     width: 15px; height: 15px; margin-left: 5px; border-radius: 50%;
-    background: #dfe4ee; color: #3a5a8c; font-size: 10px; font-weight: 700; font-style: normal;
+    background: var(--help-bg); color: var(--help-fg); font-size: 10px; font-weight: 700; font-style: normal;
     cursor: help; position: relative; vertical-align: middle; line-height: 1; user-select: none;
   }
   .help:hover, .help:focus { background: #3a5a8c; color: #fff; outline: none; }

@@ -18,11 +18,11 @@
 {/if}
 
 <style>
-  .diag { border-left: 6px solid #e76f51; background: #fff4e5; padding: 10px 16px; border-radius: 8px; }
-  .lvl-none { border-color: #2a9d8f; background: #eef8f1; }
+  .diag { border-left: 6px solid #e76f51; background: var(--warn-bg); padding: 10px 16px; border-radius: 8px; }
+  .lvl-none { border-color: #2a9d8f; background: var(--ok-bg); }
   .lvl-lan { border-color: #2a9d8f; }
-  .lvl-wan { border-color: #3a5a8c; background: #eef2fa; }
-  .lvl-unclear { border-color: #999; background: #f4f4f4; }
+  .lvl-wan { border-color: #3a5a8c; background: var(--info-bg); }
+  .lvl-unclear { border-color: #999; background: var(--neutral-bg); }
   .head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
   h2 { font-size: 16px; margin: 0; }
   .conf { font-size: 12px; white-space: nowrap; }

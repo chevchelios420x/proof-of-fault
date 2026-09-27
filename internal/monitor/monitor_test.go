@@ -154,7 +154,7 @@ func TestIncidents(t *testing.T) {
 			run(10*ms, 20*ms, 15*ms)
 		}
 		ins, _ := r.m.store.Incidents(r.sid)
-		if len(ins) != 1 || ins[0].Class != c.want || ins[0].Seconds != 4 || ins[0].PreRoll != incPreRoll {
+		if len(ins) != 1 || ins[0].Class != c.want || ins[0].Seconds != 4 || ins[0].PreRoll != r.cfg.IncidentPreSec {
 			t.Errorf("%s: got %+v", c.name, ins)
 			continue
 		}

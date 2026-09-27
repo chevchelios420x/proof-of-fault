@@ -138,7 +138,7 @@ small{color:#666}
 </div>
 
 <h2>Kennzahlen je Zone</h2>
-<table><tr><th>Zone</th><th>Probes</th><th>Verlust %</th><th>Min</th><th>Ø</th><th>P50</th><th>P95</th><th>P99</th><th>Max</th><th>Jitter (RFC 3550)</th><th>&gt;100 ms</th><th>Ausfallzeit</th></tr>
+<table><tr><th>Zone</th><th>Probes</th><th>Verlust %</th><th>Min</th><th>Ø</th><th>P50</th><th>P95</th><th>P99</th><th>Max</th><th>Jitter (RFC 3550)</th><th>&gt;{{printf "%.0f" .R.HighLatencyMs}} ms</th><th>Ausfallzeit</th></tr>
 {{range .R.Zones}}<tr><td>{{.Zone}}</td><td>{{.Summary.Sent}}</td><td>{{f2 .Summary.LossPct}}</td><td>{{f1 .Summary.MinMs}}</td><td>{{f1 .Summary.AvgMs}}</td><td>{{f1 .Summary.P50Ms}}</td><td>{{f1 .Summary.P95Ms}}</td><td>{{f1 .Summary.P99Ms}}</td><td>{{f1 .Summary.MaxMs}}</td><td>{{f2 .Summary.JitterMs}}</td><td>{{.SpikesOver100}}</td><td>{{dur (index $.R.OutageSeconds (printf "%s" .Zone))}}</td></tr>
 {{end}}</table>
 <small>Alle Latenzen in ms (Round-Trip). Ausfall = mindestens 3 aufeinanderfolgende Verluste; zugeordnet wird die erste Zone, ab der alle weiteren Zonen bis zum Ziel nicht antworten. Verluste nur an einem Zwischen-Hop bei erreichbarem Ziel (ICMP-Ratenbegrenzung) werden nicht als Ausfall gewertet.</small>

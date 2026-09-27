@@ -1,17 +1,48 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, GetSettings, SaveSettings, DefaultSettings, DeleteSession } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
   import Diagnosis from './Diagnosis.svelte'
   import IncidentList from './IncidentList.svelte'
+  import Settings from './Settings.svelte'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap } from './zones.js'
   import Help from './Help.svelte'
   import { HELP } from './help.js'
 
   let tab = 'live'
+
+  // Settings and color scheme.
+  let settings = null
+  let showSettings = false
+  let themeTick = 0
+  let liveWindow = 30
+  function applyTheme(t) {
+    const root = document.documentElement
+    if (t === 'light' || t === 'dark') root.dataset.theme = t
+    else delete root.dataset.theme
+    try { localStorage.setItem('theme', t || 'auto') } catch {}
+    themeTick++
+  }
+  try { applyTheme(localStorage.getItem('theme') || 'auto') } catch {}
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => themeTick++)
+  async function saveSettings(s) {
+    settings = await SaveSettings(s)
+    applyTheme(settings.theme)
+    liveWindow = settings.defaultWindowMin
+  }
+  async function removeSession(id) {
+    if (!confirm('Diese Messung mit allen Daten endgültig löschen?')) return
+    try {
+      await DeleteSession(id)
+      sessionData = null
+      selected = null
+      sessions = (await ListSessions()) || []
+      if (sessions.length) await select(sessions[0].id)
+    } catch (e) { exportMsg = 'Fehler: ' + e }
+  }
   let version = ''
   let target = localStorage.getItem('target') || '1.1.1.1'
   let status = { state: 'idle', reps: [], hops: [] }
@@ -117,6 +148,11 @@
 
   onMount(async () => {
     version = await GetVersion()
+    try {
+      settings = await GetSettings()
+      applyTheme(settings.theme)
+      liveWindow = settings.defaultWindowMin
+    } catch {}
     status = await GetStatus()
     if (status.state === 'error') error = status.message
     EventsOn('status', (s) => {
@@ -191,6 +227,7 @@
 <header>
   <h1>proof-of-fault <span class="ver">{version}</span></h1>
   <nav>
+    <button class="gear" title="Einstellungen" on:click={() => (showSettings = true)} disabled={!settings}>⚙</button>
     <button class:active={tab === 'live'} on:click={() => (tab = 'live')}>Messung</button>
     <button class:active={tab === 'history'} on:click={openHistory}>Verlauf &amp; Berichte</button>
   </nav>
@@ -257,7 +294,7 @@
 
       <section class="card">
         <h2>Latenzverlauf (live)<Help align="left" text={HELP.chart} /></h2>
-        <Chart bind:this={liveChart} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
+        <Chart bind:this={liveChart} bind:windowMin={liveWindow} theme={themeTick} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
       </section>
 
       <div class="two">
@@ -368,7 +405,8 @@
               <span>
                 <button on:click={() => doExport('html')}>Bericht (HTML/PDF)</button><Help text={HELP.exportHtml} />
                 <button on:click={() => doExport('csv')}>Rohdaten (CSV)</button><Help text={HELP.exportCsv} />
-                <button on:click={() => doExport('events')}>Ereignisse (CSV)</button><Help align="right" text={HELP.exportEvents} />
+                <button on:click={() => doExport('events')}>Ereignisse (CSV)</button>
+                <button class="del-session" title="Diese Messung löschen" on:click={() => removeSession(r.session.id)}>🗑</button><Help align="right" text={HELP.exportEvents} />
               </span>
             </div>
             <p>{fmtTime(r.session.startedAt)} – {fmtTime(r.session.endedAt)} · Dauer {fmtDur(r.durationSec)} · {r.pathChanges} Routenwechsel</p>
@@ -389,7 +427,7 @@
           </section>
           <section class="card">
             <h2>Latenzverlauf<Help align="left" text={HELP.chart} /></h2>
-            <Chart bind:this={histChart} bands={r.incidents || []} timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
+            <Chart bind:this={histChart} theme={themeTick} bands={r.incidents || []} timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
               hidden={histHidden} onToggle={(k, show) => { show ? histHidden.delete(k) : histHidden.add(k); histHidden = new Set(histHidden) }} version={histVersion} />
           </section>
           <section class="card">
@@ -406,12 +444,20 @@
   {/if}
 </main>
 
+{#if showSettings && settings}
+  <Settings {settings} onSave={saveSettings} onClose={() => (showSettings = false)} onDefaults={DefaultSettings} onPreviewTheme={applyTheme} />
+{/if}
+
 <style>
   header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: #1f2a44; color: #fff; }
   header h1 { font-size: 18px; margin: 0; }
   .ver { font-size: 12px; font-weight: 400; color: #cfd6e6; margin-left: 6px; }
   nav button { background: transparent; color: #cfd6e6; border: none; }
   nav button.active { color: #fff; border-bottom: 2px solid #fff; border-radius: 0; }
+  nav { display: flex; align-items: center; gap: 4px; }
+  nav .gear { order: 3; font-size: 18px; padding: 2px 10px; margin-left: 8px; }
+  nav .gear:hover { color: #fff; }
+  .del-session { padding: 6px 10px; }
   main { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
   h2 { font-size: 15px; margin: 0 0 8px; }
   h3 { font-size: 13px; margin: 0 0 4px; color: var(--muted); }
@@ -430,7 +476,7 @@
   .two { display: grid; grid-template-columns: 1fr; gap: 14px; }
   .history { display: grid; grid-template-columns: 240px 1fr; gap: 14px; align-items: start; }
   .session { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
-  .session.active { border-color: var(--accent); background: #eef2fa; }
+  .session.active { border-color: var(--accent); background: var(--sel-bg); }
   .detail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
   .route select { padding: 2px 4px; font-size: 12px; }

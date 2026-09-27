@@ -26,7 +26,7 @@ type ZoneReport struct {
 	Zone    path.Zone       `json:"zone"`
 	Summary metrics.Summary `json:"summary"`
 	Peaks   []Peak          `json:"peaks"`
-	// SpikesOver100 counts samples above 100 ms.
+	// SpikesOver100 counts samples above the "high latency" setting (default 100 ms).
 	SpikesOver100 int `json:"spikesOver100"`
 }
 
@@ -43,6 +43,7 @@ type Report struct {
 	Diagnosis     Diagnosis          `json:"diagnosis"`
 	Events        []store.Event      `json:"events"`
 	Incidents     []store.Incident   `json:"incidents"`
+	HighLatencyMs float64            `json:"highLatencyMs"`
 	DataSHA256    string             `json:"dataSha256"`
 }
 
@@ -89,6 +90,8 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 		rep.OutageSeconds[o.Zone] += o.Seconds
 	}
 
+	highMs := st.Settings().HighLatencyMs
+	rep.HighLatencyMs = highMs
 	byZone := map[path.Zone][]store.Sample{}
 	h := sha256.New()
 	for _, s := range samples {
@@ -115,7 +118,7 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 				ms := float64(s.RTT) / float64(time.Millisecond)
 				ser.RTTMs[i] = ms
 				peaks = append(peaks, Peak{T: ser.T[i], RTTMs: ms})
-				if ms > 100 {
+				if ms > highMs {
 					zr.SpikesOver100++
 				}
 			}

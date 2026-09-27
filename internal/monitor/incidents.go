@@ -14,8 +14,6 @@ import (
 const EvIncident = "incident"
 
 const (
-	incPreRoll  = 10  // seconds shown before a disruption
-	incPostRoll = 5   // clean seconds that end a disruption (and are shown)
 	incMaxTicks = 900 // split very long disruptions
 )
 
@@ -59,7 +57,7 @@ func (r *runner) customStates(t *tick, st map[string]byte) {
 			r.base[c.key] = b
 		}
 		st[c.key] = '.'
-		if m := b.median(); m > 0 && float64(rtt) > spikeFactor*float64(m) && rtt-m > spikeMinDelta {
+		if r.cfg.IsSpike(string(c.zone), rtt, b.median()) {
 			st[c.key] = 's'
 		}
 		b.add(rtt)
@@ -151,7 +149,7 @@ func (r *runner) trackIncident(ts *tickState) {
 		r.inc.lastProblem = len(r.inc.ticks) - 1
 	} else if r.inc != nil {
 		r.inc.ticks = append(r.inc.ticks, ts)
-		if len(r.inc.ticks)-1-r.inc.lastProblem >= incPostRoll {
+		if len(r.inc.ticks)-1-r.inc.lastProblem >= r.cfg.IncidentPostSec {
 			r.closeIncident()
 		}
 	}
@@ -159,8 +157,8 @@ func (r *runner) trackIncident(ts *tickState) {
 		r.closeIncident()
 	}
 	r.recent = append(r.recent, ts)
-	if len(r.recent) > incPreRoll {
-		r.recent = r.recent[len(r.recent)-incPreRoll:]
+	if len(r.recent) > r.cfg.IncidentPreSec {
+		r.recent = r.recent[len(r.recent)-r.cfg.IncidentPreSec:]
 	}
 }
 

@@ -1,14 +1,36 @@
 :root {
-  --bg: #f7f7f8; --card: #fff; --fg: #1d1d1f; --muted: #6e6e73; --border: #e3e3e6;
+  --bg: #f5f6f8; --card: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --border: #e3e3e6;
+  --input-bg: #ffffff; --grid: rgba(0, 0, 0, 0.08); --axis: #333;
+  --warn-bg: #fff4e5; --ok-bg: #eaf7ef; --info-bg: #eef2fa; --neutral-bg: #f2f2f2; --crit-bg: #fde2e2;
+  --help-bg: #dfe4ee; --help-fg: #3a5a8c; --sel-bg: #eef2fa; --none-cell: #dddddd;
   --lan: #2a9d8f; --isp: #e76f51; --wan: #3a5a8c; --bad: #d62828; --accent: #3a5a8c;
   font-family: "Segoe UI", system-ui, sans-serif; color: var(--fg); background: var(--bg);
+  color-scheme: light;
 }
-body { margin: 0; }
-button { font: inherit; border: 1px solid var(--border); background: var(--card); border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161b; --card: #1d2027; --fg: #e6e7ea; --muted: #9aa0ab; --border: #2e323b;
+    --input-bg: #262a33; --grid: rgba(255, 255, 255, 0.08); --axis: #c9ccd3;
+    --warn-bg: #3a2a1a; --ok-bg: #173026; --info-bg: #1c2638; --neutral-bg: #262a33; --crit-bg: #3d1c1c;
+    --help-bg: #2d3a55; --help-fg: #aac4ff; --sel-bg: #243150; --none-cell: #3a3f4a;
+    --wan: #6f8fcf; --accent: #6f8fcf;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161b; --card: #1d2027; --fg: #e6e7ea; --muted: #9aa0ab; --border: #2e323b;
+  --input-bg: #262a33; --grid: rgba(255, 255, 255, 0.08); --axis: #c9ccd3;
+  --warn-bg: #3a2a1a; --ok-bg: #173026; --info-bg: #1c2638; --neutral-bg: #262a33; --crit-bg: #3d1c1c;
+  --help-bg: #2d3a55; --help-fg: #aac4ff; --sel-bg: #243150; --none-cell: #3a3f4a;
+  --wan: #6f8fcf; --accent: #6f8fcf;
+  color-scheme: dark;
+}
+body { margin: 0; background: var(--bg); color: var(--fg); }
+button { font: inherit; color: var(--fg); border: 1px solid var(--border); background: var(--card); border-radius: 6px; padding: 6px 14px; cursor: pointer; }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 button.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
 button:disabled { opacity: .5; cursor: default; }
-input, select { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
+input, select { font: inherit; color: var(--fg); background: var(--input-bg); padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; }
 th:first-child, td:first-child { text-align: left; }

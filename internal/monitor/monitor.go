@@ -14,17 +14,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chevchelios420x/proof-of-fault/internal/config"
 	"github.com/chevchelios420x/proof-of-fault/internal/metrics"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
+	"github.com/chevchelios420x/proof-of-fault/internal/power"
 	"github.com/chevchelios420x/proof-of-fault/internal/probe"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
 )
 
 const (
-	interval       = time.Second
-	probeTimeout   = 3 * time.Second
-	outageAfter    = 3 // consecutive losses
-	rediscoverEach = 5 * time.Minute
+	interval = time.Second
 )
 
 // Emitter delivers events to the UI.
@@ -92,11 +91,33 @@ type Monitor struct {
 	cmds    chan func(*runner)
 	status  Status
 	watched map[string]bool
+	cfg     config.Settings
+}
+
+// Settings returns the current settings.
+func (m *Monitor) Settings() config.Settings {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg
+}
+
+// SaveSettings stores new settings and applies them immediately (also to a
+// running measurement).
+func (m *Monitor) SaveSettings(cfg config.Settings) error {
+	cfg = cfg.Normalize()
+	if err := m.store.SaveSettings(cfg); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.cfg = cfg
+	m.mu.Unlock()
+	m.send(func(r *runner) { r.cfg = cfg })
+	return nil
 }
 
 // New creates a monitor.
 func New(p probe.Prober, s *store.Store, emit Emitter) *Monitor {
-	m := &Monitor{prober: p, store: s, emit: emit, watched: map[string]bool{}}
+	m := &Monitor{prober: p, store: s, emit: emit, watched: map[string]bool{}, cfg: s.Settings()}
 	prefs, _ := s.HopPrefs()
 	for a, p := range prefs {
 		if p.Watched {
@@ -330,6 +351,16 @@ func (m *Monitor) run(ctx context.Context, target string) error {
 	if err != nil {
 		return err
 	}
+	cfg := m.Settings()
+	cfg.LastTarget = target
+	m.store.SaveSettings(cfg)
+	m.mu.Lock()
+	m.cfg = cfg
+	m.mu.Unlock()
+	if cfg.PreventSleep {
+		defer power.KeepAwake().Release()
+	}
+
 	host, _ := os.Hostname()
 	sid, err := m.store.CreateSession(target, dst.String(), map[string]string{
 		"hostname": host, "os": runtime.GOOS, "arch": runtime.GOARCH,
@@ -392,6 +423,7 @@ type runner struct {
 	recent      []*tickState
 	inc         *incBuf
 	realLost    map[string]int // losses that reached the target, per series
+	cfg         config.Settings
 
 	ctx context.Context
 	wg  *sync.WaitGroup
@@ -419,7 +451,7 @@ func newRunner(m *Monitor, sid int64, dst netip.Addr, hops []path.Hop, reps []pa
 	r := &runner{m: m, sid: sid, dst: dst, hops: hops, reps: reps,
 		results: make(chan result, 256), zones: map[path.Zone]*zoneState{}, hopMode: map[string]*hopProbe{},
 		seq: 0, nextSeq: 1, ticks: map[int]*tick{}, done: map[int]bool{}, base: map[string]*baseline{},
-		episodes: map[string]*episode{}, realLost: map[string]int{}, names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
+		episodes: map[string]*episode{}, realLost: map[string]int{}, cfg: m.Settings(), names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
 	for _, z := range path.Zones {
 		r.zones[z] = &zoneState{}
 	}
@@ -431,7 +463,8 @@ func (r *runner) loop(ctx context.Context) error {
 	defer tick.Stop()
 	flush := time.NewTicker(time.Second)
 	defer flush.Stop()
-	rediscover := time.NewTicker(rediscoverEach)
+	rediscoverEvery := time.Duration(r.cfg.RediscoverMin) * time.Minute
+	rediscover := time.NewTicker(rediscoverEvery)
 	defer rediscover.Stop()
 
 	var wg sync.WaitGroup
@@ -544,7 +577,7 @@ func (r *runner) drainTicks(all bool) {
 			return
 		}
 		complete := len(t.result) >= len(t.order)+len(t.custom)
-		overdue := r.seq-t.seq > int(probeTimeout/interval)+2
+		overdue := r.seq-t.seq > int(r.cfg.ProbeTimeout()/interval)+2
 		if !complete && !overdue && !all {
 			return
 		}
@@ -555,13 +588,14 @@ func (r *runner) drainTicks(all bool) {
 }
 
 func (r *runner) probeOne(ctx context.Context, wg *sync.WaitGroup, seq int, key string, addr netip.Addr, ttl int, direct bool) {
+	timeout := r.cfg.ProbeTimeout()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		req := probe.Request{Dst: addr, Timeout: probeTimeout}
+		req := probe.Request{Dst: addr, Timeout: timeout}
 		want := probe.EchoReply
 		if !direct {
-			req = probe.Request{Dst: r.dst, TTL: ttl, Timeout: probeTimeout}
+			req = probe.Request{Dst: r.dst, TTL: ttl, Timeout: timeout}
 			want = probe.TimeExceeded
 		}
 		res, err := r.m.prober.Probe(ctx, req)
@@ -688,7 +722,7 @@ func (r *runner) evaluate(now time.Time) {
 	for i := range measured {
 		allDown := true
 		for _, z := range measured[i:] {
-			if r.zones[z].streak < outageAfter {
+			if r.zones[z].streak < r.cfg.OutageAfter {
 				allDown = false
 				break
 			}
@@ -707,7 +741,7 @@ func (r *runner) evaluate(now time.Time) {
 		r.m.store.StartOutage(r.sid, string(fault), since)
 		r.logEvent(store.Event{T: since.UnixMilli(), Kind: KindOutageStart, Severity: "crit", Zone: string(fault),
 			Title:  fmt.Sprintf("AUSFALL: keine Verbindung ab Zone %s", fault),
-			Detail: fmt.Sprintf("Mindestens %d Sekunden in Folge keine Antwort ab %s bis zum Ziel. Ursache im Bereich %s. Route wird zur Kontrolle neu ermittelt.", outageAfter, fault, zoneText(fault))})
+			Detail: fmt.Sprintf("Mindestens %d Sekunden in Folge keine Antwort ab %s bis zum Ziel. Ursache im Bereich %s. Route wird zur Kontrolle neu ermittelt.", r.cfg.OutageAfter, fault, zoneText(fault))})
 		if r.ctx != nil {
 			r.rediscover()
 		}

@@ -91,7 +91,7 @@
   .ok { background: #52b788; }
   .slow { background: #f4a261; }
   .lost { background: #d62828; }
-  .none { background: #ddd; }
+  .none { background: var(--none-cell); }
   .pre { opacity: 0.4; }
   .badge { font-size: 11px; padding: 1px 7px; border-radius: 8px; color: #fff; background: #d62828; white-space: nowrap; }
   .b-target, .b-alt { background: #3a5a8c; }

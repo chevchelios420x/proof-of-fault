@@ -49,11 +49,11 @@
   td.txt { text-align: left; }
   td:nth-child(-n + 3) { white-space: nowrap; }
   small { color: var(--muted); }
-  .sev-crit { background: #fde2e2; }
-  .sev-warn { background: #fff6e0; }
-  .sev-ok { background: #e9f7ef; }
+  .sev-crit { background: var(--crit-bg); }
+  .sev-warn { background: var(--warn-bg); }
+  .sev-ok { background: var(--ok-bg); }
   .sev-info td { color: var(--muted); }
-  .badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #eee; white-space: nowrap; }
+  .badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--neutral-bg); white-space: nowrap; }
   .k-loss, .k-outage_start { background: #d62828; color: #fff; }
   .k-spike { background: #f4a261; color: #fff; }
   .k-path_change { background: #3a5a8c; color: #fff; }

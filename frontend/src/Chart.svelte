@@ -11,21 +11,21 @@
   export let version = 0 // bump to redraw
   export let live = false // pause updates while the mouse is over the chart
   export let bands = [] // incidents [{t, end, class}] shaded in the plot
+  export let theme = 0 // bump when the color scheme changes (axis colors)
+  export let windowMin = 30 // live view: visible minutes (0 = whole session)
 
   let el, plot, ro, builtFor = ''
   let paused = false
   let zoomed = false // user zoomed in: keep the x range on updates
   let scaleMode = 'auto' // auto | linear | log
-  // Live view: visible time window in minutes (0 = whole session).
-  let windowMin = 30
-  try { windowMin = Number(localStorage.getItem('liveWindowMin') ?? 30) } catch {}
-  $: try { localStorage.setItem('liveWindowMin', String(windowMin)) } catch {}
+
   let logActive = false
   let cursorT = null
   let cursorVals = {}
 
   $: keys = series.map((s) => s.key)
-  $: signature = series.map((s) => s.key + '=' + s.label + '=' + s.color).join('|')
+  $: signature = series.map((s) => s.key + '=' + s.label + '=' + s.color).join('|') + '#' + theme
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
   $: groups = GROUPS.map((g) => ({ g, items: series.filter((s) => (s.group || 'none') === g) })).filter((x) => x.items.length)
 
   // Auto: logarithmic once the data spans roughly 1 ms … 1000 ms, so
@@ -100,7 +100,10 @@
           ? { distr: 3, log: 10, range: (u, min, max) => uPlot.rangeLog(Math.max(0.5, min || 1), Math.max(10, max || 10), 10, true) }
           : { range: (u, min, max) => [0, Math.max(10, (max || 0) * 1.1)] },
       },
-      axes: [{}, { label: logActive ? 'RTT (ms, logarithmisch)' : 'RTT (ms)', size: 60 }],
+      axes: [
+        { stroke: css('--axis'), grid: { stroke: css('--grid') }, ticks: { stroke: css('--grid') } },
+        { label: logActive ? 'RTT (ms, logarithmisch)' : 'RTT (ms)', size: 60, stroke: css('--axis'), grid: { stroke: css('--grid') }, ticks: { stroke: css('--grid') } },
+      ],
       series: [
         {},
         ...series.map((s) => ({
