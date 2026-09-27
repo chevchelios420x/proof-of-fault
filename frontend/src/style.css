@@ -1,0 +1,15 @@
+:root {
+  --bg: #f7f7f8; --card: #fff; --fg: #1d1d1f; --muted: #6e6e73; --border: #e3e3e6;
+  --lan: #2a9d8f; --isp: #e76f51; --wan: #3a5a8c; --bad: #d62828; --accent: #3a5a8c;
+  font-family: "Segoe UI", system-ui, sans-serif; color: var(--fg); background: var(--bg);
+}
+body { margin: 0; }
+button { font: inherit; border: 1px solid var(--border); background: var(--card); border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+input, select { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }

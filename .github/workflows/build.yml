@@ -1,0 +1,29 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test
+        run: go test ./internal/...
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+      - name: Build
+        run: wails build -platform windows/amd64 -clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-of-fault-windows-amd64
+          path: build/bin/proof-of-fault.exe
