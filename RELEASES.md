@@ -6,6 +6,17 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.17.0 – 2026-09-28
+
+- **Messrechner & Netzwerk im Bericht**: Beim Start jeder Messung wird automatisch
+  festgehalten: Rechnername, Betriebssystem, lokale IP (mit Präfix), verwendeter
+  Netzwerkadapter, MAC/MTU, Standard-Gateway, DNS-Server sowie die komplette
+  Routing-Tabelle, ARP-Tabelle und Adapter-Konfiguration (`route print`,
+  `arp -a`, `ipconfig /all`; ohne Admin-Rechte, ohne aufblitzende Fenster).
+  Steht ganz oben im HTML-Bericht (Tabellen aufklappbar) und im Verlauf als Karte
+  „Messrechner & Netzwerk“ – so ist dokumentiert, über welchen Weg gemessen
+  wurde, und mehrere Berichte lassen sich vergleichen.
+
 ## v0.16.1 – 2026-09-27
 
 - Fehlerbehebung: Bei Beginn eines Ausfalls wird die Route neu geprüft. Während

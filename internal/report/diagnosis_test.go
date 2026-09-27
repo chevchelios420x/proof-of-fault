@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chevchelios420x/proof-of-fault/internal/netinfo"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
 )
 
@@ -40,5 +41,18 @@ func TestHTMLWithIncident(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), `class="c-x"`) || r.Diagnosis.Level != "isp" {
 		t.Fatalf("matrix or diagnosis missing: level=%s", r.Diagnosis.Level)
+	}
+}
+
+func TestHTMLNetInfo(t *testing.T) {
+	r := Report{Net: &netinfo.Snapshot{Hostname: "pc", LocalIP: "192.168.0.6", Gateways: []string{"192.168.0.1"}, Routes: "0.0.0.0 0.0.0.0 192.168.0.1", ARP: "192.168.0.1 bc-24-11"}}
+	var b strings.Builder
+	if err := WriteHTML(&b, r, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Messrechner", "192.168.0.6", "Standard-Gateway", "ARP-Tabelle"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("missing %q", want)
+		}
 	}
 }

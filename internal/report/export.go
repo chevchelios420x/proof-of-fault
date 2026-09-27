@@ -96,9 +96,15 @@ var funcs = template.FuncMap{
 		}
 		return time.UnixMilli(ms).Format("02.01.2006 15:04:05")
 	},
-	"dur":    func(sec float64) string { return (time.Duration(sec) * time.Second).Round(time.Second).String() },
-	"f1":     func(v float64) string { return fmt.Sprintf("%.1f", v) },
-	"kind":   kindText,
+	"dur":  func(sec float64) string { return (time.Duration(sec) * time.Second).Round(time.Second).String() },
+	"f1":   func(v float64) string { return fmt.Sprintf("%.1f", v) },
+	"kind": kindText,
+	"join": func(xs []string) string {
+		if len(xs) == 0 {
+			return "–"
+		}
+		return strings.Join(xs, ", ")
+	},
 	"cls":    monitor.ClassName,
 	"inc":    func(i int) int { return i + 1 },
 	"matrix": matrixHTML,
@@ -117,6 +123,9 @@ th{background:#f1f1f1}
 .lvl-none{background:#eef8f1;border-color:#2a9d8f}.lvl-lan{border-color:#2a9d8f}.lvl-wan{border-color:#3a5a8c}
 .log td{text-align:left;vertical-align:top}.log td:nth-child(1),.log td:nth-child(2){white-space:nowrap}
 .c{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
+table.net th{text-align:left;background:#f1f1f1;width:15%}table.net td{text-align:left}
+details{margin:4px 0}summary{cursor:pointer;font-weight:600}pre{background:#f6f6f6;padding:8px;font-size:11px;overflow-x:auto;white-space:pre}
+@media print{details>pre{display:block}}
 .note{background:#f4f4f4;border-left:4px solid #999;padding:8px 14px;margin:8px 0;white-space:pre-wrap}.c-d{background:#5a3a3a}.c-p{background:repeating-linear-gradient(45deg,#9b8ec7 0 3px,#d8d0f0 3px 6px)}.c-ok{background:#52b788}.c-s{background:#f4a261}.c-x{background:#d62828}.c-n{background:#ddd}
 table.mx{width:auto;border-collapse:separate;border-spacing:1px}table.mx td{padding:0;border:none;width:9px;height:14px}
 table.mx td.lbl{padding:0 8px 0 0;width:auto;white-space:nowrap;text-align:left;font-size:12px}
@@ -131,6 +140,17 @@ small{color:#666}
 <p><b>Ziel:</b> {{.R.Session.Target}} ({{.R.Session.TargetIP}}) &nbsp; <b>Messung:</b> {{ts .R.Session.StartedAt}} – {{ts .R.Session.EndedAt}} ({{dur .R.DurationSec}})<br>
 <b>Messrechner:</b> <small>{{.R.Session.HostInfo}}</small> &nbsp; <b>Erstellt:</b> {{ts .R.GeneratedAt}}</p>
 {{if .R.Session.Note}}<div class="note"><b>Kommentar:</b> {{.R.Session.Note}}</div>{{end}}
+{{with .R.Net}}
+<h2>Messrechner &amp; Netzwerk <small>(Stand {{ts .TakenAt}})</small></h2>
+<table class="net">
+<tr><th>Rechner</th><td>{{.Hostname}} ({{.OS}})</td><th>Lokale IP</th><td>{{if .Prefix}}{{.Prefix}}{{else}}{{.LocalIP}}{{end}}</td></tr>
+<tr><th>Netzwerkadapter</th><td>{{.Interface}}</td><th>MAC / MTU</th><td>{{.MAC}} / {{.MTU}}</td></tr>
+<tr><th>Standard-Gateway</th><td>{{join .Gateways}}</td><th>DNS-Server</th><td>{{join .DNS}}</td></tr>
+</table>
+<details><summary>Routing-Tabelle</summary><pre>{{.Routes}}</pre></details>
+<details><summary>ARP-Tabelle</summary><pre>{{.ARP}}</pre></details>
+<details><summary>Adapter-Konfiguration (ipconfig /all)</summary><pre>{{.IPConfig}}</pre></details>
+{{end}}
 <div class="verdict lvl-{{.R.Diagnosis.Level}}">
 <h2 style="margin-top:0">Diagnose: {{.R.Diagnosis.Headline}}</h2>
 <p><b>Sicherheit der Einschätzung:</b> {{.R.Diagnosis.Confidence}}</p>

@@ -135,6 +135,7 @@ func Open(path string) (*Store, error) {
 	db.Exec(`ALTER TABLE custom_point ADD COLUMN tcp INTEGER NOT NULL DEFAULT 0`)
 	db.Exec(`ALTER TABLE custom_point ADD COLUMN port INTEGER NOT NULL DEFAULT 443`)
 	db.Exec(`ALTER TABLE session ADD COLUMN note TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE session ADD COLUMN netinfo TEXT NOT NULL DEFAULT ''`)
 	seedCustomPoints(db)
 	s := &Store{db: db, stop: make(chan struct{}), done: make(chan struct{})}
 	go s.flushLoop()
@@ -251,6 +252,19 @@ type SessionInfo struct {
 	EndedAt   int64  `json:"endedAt"`   // unix ms, 0 = running/aborted
 	HostInfo  string `json:"hostInfo"`
 	Note      string `json:"note"` // user comment, e.g. to compare measurements
+	// NetInfo is the network snapshot (JSON of netinfo.Snapshot) taken at
+	// the start of the measurement; "" if none.
+	NetInfo json.RawMessage `json:"netInfo,omitempty"`
+}
+
+// SetNetInfo stores the network snapshot of a session (any JSON value).
+func (s *Store) SetNetInfo(id int64, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE session SET netinfo=? WHERE id=?`, string(b), id)
+	return err
 }
 
 // SetSessionNote stores the user comment of a session.
@@ -261,7 +275,7 @@ func (s *Store) SetSessionNote(id int64, note string) error {
 
 // Sessions lists sessions, newest first.
 func (s *Store) Sessions() ([]SessionInfo, error) {
-	rows, err := s.db.Query(`SELECT id, target, target_ip, started_ns, COALESCE(ended_ns,0), COALESCE(host_info,''), COALESCE(note,'') FROM session ORDER BY id DESC`)
+	rows, err := s.db.Query(`SELECT id, target, target_ip, started_ns, COALESCE(ended_ns,0), COALESCE(host_info,''), COALESCE(note,''), COALESCE(netinfo,'') FROM session ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -270,8 +284,12 @@ func (s *Store) Sessions() ([]SessionInfo, error) {
 	for rows.Next() {
 		var x SessionInfo
 		var st, en int64
-		if err := rows.Scan(&x.ID, &x.Target, &x.TargetIP, &st, &en, &x.HostInfo, &x.Note); err != nil {
+		var ni string
+		if err := rows.Scan(&x.ID, &x.Target, &x.TargetIP, &st, &en, &x.HostInfo, &x.Note, &ni); err != nil {
 			return nil, err
+		}
+		if ni != "" {
+			x.NetInfo = json.RawMessage(ni)
 		}
 		x.StartedAt = st / 1e6
 		x.EndedAt = en / 1e6

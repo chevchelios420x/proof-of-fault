@@ -16,6 +16,7 @@ import (
 
 	"github.com/chevchelios420x/proof-of-fault/internal/config"
 	"github.com/chevchelios420x/proof-of-fault/internal/metrics"
+	"github.com/chevchelios420x/proof-of-fault/internal/netinfo"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/power"
 	"github.com/chevchelios420x/proof-of-fault/internal/probe"
@@ -401,6 +402,9 @@ func (m *Monitor) run(ctx context.Context, target string) error {
 		return err
 	}
 	defer m.store.EndSession(sid)
+	// Document the measuring computer's network setup (adapter, gateway,
+	// routes, ARP) without delaying the start.
+	go func() { m.store.SetNetInfo(sid, netinfo.Capture(dst)) }()
 
 	m.setStatus(func(s *Status) {
 		s.State, s.SessionID, s.TargetIP = "discovering", sid, dst.String()

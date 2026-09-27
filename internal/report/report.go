@@ -12,6 +12,7 @@ import (
 
 	"github.com/chevchelios420x/proof-of-fault/internal/config"
 	"github.com/chevchelios420x/proof-of-fault/internal/metrics"
+	"github.com/chevchelios420x/proof-of-fault/internal/netinfo"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
 )
@@ -46,6 +47,7 @@ type Report struct {
 	Incidents     []store.Incident   `json:"incidents"`
 	HighLatencyMs float64            `json:"highLatencyMs"`
 	ZoneDefs      []config.ZoneDef   `json:"zoneDefs"`
+	Net           *netinfo.Snapshot  `json:"net"` // network setup at measurement start
 	DataSHA256    string             `json:"dataSha256"`
 }
 
@@ -80,6 +82,12 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 	rep.PathChanges, _ = st.PathChanges(id)
 
 	rep.Session = info
+	if len(info.NetInfo) > 0 {
+		var n netinfo.Snapshot
+		if json.Unmarshal(info.NetInfo, &n) == nil {
+			rep.Net = &n
+		}
+	}
 	rep.GeneratedAt = time.Now().UnixMilli()
 	end := info.EndedAt
 	if end == 0 {

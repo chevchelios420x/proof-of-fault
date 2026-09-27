@@ -7,6 +7,7 @@
   import Diagnosis from './Diagnosis.svelte'
   import IncidentList from './IncidentList.svelte'
   import Settings from './Settings.svelte'
+  import NetInfo from './NetInfo.svelte'
   import { signalFor } from './sound.js'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap, DEFAULT_ZONES } from './zones.js'
@@ -474,6 +475,10 @@
             </label>
             <Diagnosis d={r.diagnosis} />
             {#if exportMsg}<p class="muted">{exportMsg}</p>{/if}
+          </section>
+          <section class="card">
+            <h2>Messrechner &amp; Netzwerk<Help align="left" text={HELP.netinfo} /></h2>
+            <NetInfo net={r.net} />
           </section>
           <section class="card">
             <h2>Kennzahlen</h2>
