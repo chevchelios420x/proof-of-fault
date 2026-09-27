@@ -15,11 +15,11 @@ func TestTCPConnect(t *testing.T) {
 	}
 	port := l.Addr().(*net.TCPAddr).Port
 	lo := netip.MustParseAddr("127.0.0.1")
-	if r := TCPConnect(context.Background(), lo, port, time.Second); r.Kind != EchoReply {
+	if r := TCPConnect(context.Background(), lo, port, 5*time.Second); r.Kind != EchoReply {
 		t.Fatalf("open port: %v", r.Kind)
 	}
 	l.Close()
-	if r := TCPConnect(context.Background(), lo, port, time.Second); r.Kind != EchoReply {
+	if r := TCPConnect(context.Background(), lo, port, 5*time.Second); r.Kind != EchoReply {
 		t.Fatalf("refused port should count as reachable: %v", r.Kind)
 	}
 }

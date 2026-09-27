@@ -2,11 +2,9 @@ package probe
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/netip"
 	"strconv"
-	"syscall"
 	"time"
 )
 
@@ -24,7 +22,7 @@ func TCPConnect(ctx context.Context, dst netip.Addr, port int, timeout time.Dura
 	case err == nil:
 		c.Close()
 		res.Kind, res.RTT, res.From = EchoReply, rtt, dst
-	case errors.Is(err, syscall.ECONNREFUSED):
+	case isRefused(err):
 		res.Kind, res.RTT, res.From = EchoReply, rtt, dst
 	default:
 		res.Kind = Timeout

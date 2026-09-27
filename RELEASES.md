@@ -6,6 +6,14 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.14.1 – 2026-09-27
+
+- Fehlerbehebung TCP-Check unter Windows: Eine abgelehnte Verbindung (Port
+  geschlossen) wurde fälschlich als Verlust gezählt, weil Windows dafür einen
+  eigenen Fehlercode (WSAECONNREFUSED) liefert. Sie zählt jetzt wie vorgesehen
+  als „erreichbar“. (Der automatische Windows-Build auf GitHub ist dadurch wieder
+  grün.)
+
 ## v0.14.0 – 2026-09-27
 
 - Live-Diagramm, Legende nach Zonen:
