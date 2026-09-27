@@ -18,7 +18,7 @@ Status: **Windows** (IPv4). Linux/macOS folgen (siehe `internal/probe`).
 
 ## Benutzung (Windows)
 
-Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.5.0.exe`](build/bin/proof-of-fault-v0.5.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
+Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.6.0.exe`](build/bin/proof-of-fault-v0.6.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
 
 1. `proof-of-fault.exe` starten. Es sind keine Admin-Rechte und keine Installation
    nötig; die WebView2-Runtime ist bei Windows 10/11 vorhanden.
@@ -43,6 +43,11 @@ Zwischen-Hop gelten als harmlos. Routenwechsel werden mit der genauen Änderung
 geloggt. Daraus erstellt die App eine verständliche Diagnose („Das Problem liegt
 sehr wahrscheinlich beim Internetanbieter …“) mit Empfehlungen – live, im Verlauf
 und im HTML-Bericht.
+
+**Störungen:** Jede Störung wird mit einer Sekunden-Matrix aller Hops und manuellen
+Hosts gespeichert (wer hat wann nicht geantwortet). Manuelle Hosts in der Zone WAN
+dienen als Ausweichziele – so unterscheidet die App „nur das Ziel war weg“ von
+„das Internet war weg“.
 
 Tipps für belastbare Nachweise: Den PC **per LAN-Kabel** anschließen (sonst sieht der
 Provider WLAN als Ursache). Mehrere Stunden bis Tage messen und den Energiesparmodus

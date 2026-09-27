@@ -389,6 +389,9 @@ type runner struct {
 	names       map[string]string
 	pathUpdates chan []path.Hop
 	custom      []customPoint
+	recent      []*tickState
+	inc         *incBuf
+	realLost    map[string]int // losses that reached the target, per series
 
 	ctx context.Context
 	wg  *sync.WaitGroup
@@ -416,7 +419,7 @@ func newRunner(m *Monitor, sid int64, dst netip.Addr, hops []path.Hop, reps []pa
 	r := &runner{m: m, sid: sid, dst: dst, hops: hops, reps: reps,
 		results: make(chan result, 256), zones: map[path.Zone]*zoneState{}, hopMode: map[string]*hopProbe{},
 		seq: 0, nextSeq: 1, ticks: map[int]*tick{}, done: map[int]bool{}, base: map[string]*baseline{},
-		episodes: map[string]*episode{}, names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
+		episodes: map[string]*episode{}, realLost: map[string]int{}, names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
 	for _, z := range path.Zones {
 		r.zones[z] = &zoneState{}
 	}
@@ -442,6 +445,7 @@ func (r *runner) loop(ctx context.Context) error {
 		case <-ctx.Done():
 			r.closeFault(time.Now())
 			r.drainTicks(true)
+			r.closeIncident()
 			r.closeEpisodes(r.seq, true)
 			r.logEvent(store.Event{Kind: KindSession, Severity: "info", Title: "Messung beendet"})
 			return ctx.Err()
@@ -734,7 +738,16 @@ func (r *runner) flushLive() {
 		stats[rep.Zone] = metrics.Summarize(r.zones[rep.Zone].rtts)
 	}
 	r.m.emit(EvStats, stats)
+	real := make(map[string]int, len(r.realLost))
+	for k, v := range r.realLost {
+		real[k] = v
+	}
+	r.m.emit(EvRealLoss, real)
 }
+
+// EvRealLoss carries per series the number of losses that reached the target
+// (as opposed to ICMP rate limiting at a single hop).
+const EvRealLoss = "realloss"
 
 func (r *runner) updatePath(ctx context.Context, hops []path.Hop) {
 	if samePath(r.hops, hops) {

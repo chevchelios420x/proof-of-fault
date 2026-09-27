@@ -66,6 +66,15 @@ CREATE TABLE IF NOT EXISTS custom_point (
 	zone    TEXT NOT NULL DEFAULT '',
 	enabled INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS incident (
+	id         INTEGER PRIMARY KEY,
+	session_id INTEGER NOT NULL,
+	start_ns   INTEGER NOT NULL,
+	end_ns     INTEGER NOT NULL,
+	class      TEXT NOT NULL,
+	data       TEXT NOT NULL      -- JSON: Incident
+);
+CREATE INDEX IF NOT EXISTS incident_idx ON incident(session_id, start_ns);
 CREATE TABLE IF NOT EXISTS outage (
 	session_id INTEGER NOT NULL,
 	zone       TEXT NOT NULL,     -- zone the fault is attributed to
@@ -508,4 +517,73 @@ func (s *Store) SaveCustomPoint(p CustomPoint) error {
 func (s *Store) DeleteCustomPoint(host string) error {
 	_, err := s.db.Exec(`DELETE FROM custom_point WHERE host=?`, host)
 	return err
+}
+
+// IncidentSeries is one row of an incident matrix.
+type IncidentSeries struct {
+	Key    string    `json:"key"`
+	Label  string    `json:"label"`
+	Zone   string    `json:"zone"`
+	Custom bool      `json:"custom"` // user-defined measuring point
+	Target bool      `json:"target"` // main target
+	States string    `json:"states"` // per second: '.' ok, 's' slow, 'x' no answer, '-' not probed
+	RTT    []float64 `json:"rtt"`    // per second in ms, -1 = no answer / not probed
+	Lost   int       `json:"lost"`   // lost seconds within the problem period
+}
+
+// Incident is one disruption with the state of every measuring point per
+// second, including a few seconds before and after.
+type Incident struct {
+	ID       int64            `json:"id"`
+	T        int64            `json:"t"`   // start of the problem (unix ms)
+	End      int64            `json:"end"` // end of the problem (unix ms)
+	Seconds  int              `json:"seconds"`
+	Class    string           `json:"class"` // lan | isp | isp_core | target | alt | device
+	Title    string           `json:"title"`
+	Detail   string           `json:"detail"`
+	Origin   string           `json:"origin"` // first failing point on the path
+	Columns  []int64          `json:"columns"`
+	PreRoll  int              `json:"preRoll"`  // columns before the problem
+	PostRoll int              `json:"postRoll"` // columns after the problem
+	Series   []IncidentSeries `json:"series"`
+	Classes  map[string]int   `json:"classes"` // seconds per class within the incident
+}
+
+// AddIncident stores an incident.
+func (s *Store) AddIncident(sid int64, in Incident) (Incident, error) {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return in, err
+	}
+	r, err := s.db.Exec(`INSERT INTO incident(session_id, start_ns, end_ns, class, data) VALUES(?,?,?,?,?)`,
+		sid, in.T*1e6, in.End*1e6, in.Class, string(b))
+	if err != nil {
+		return in, err
+	}
+	in.ID, _ = r.LastInsertId()
+	return in, nil
+}
+
+// Incidents returns the incidents of a session in time order.
+func (s *Store) Incidents(sid int64) ([]Incident, error) {
+	rows, err := s.db.Query(`SELECT id, data FROM incident WHERE session_id=? ORDER BY start_ns`, sid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Incident
+	for rows.Next() {
+		var id int64
+		var data string
+		if err := rows.Scan(&id, &data); err != nil {
+			return nil, err
+		}
+		var in Incident
+		if err := json.Unmarshal([]byte(data), &in); err != nil {
+			continue
+		}
+		in.ID = id
+		out = append(out, in)
+	}
+	return out, rows.Err()
 }

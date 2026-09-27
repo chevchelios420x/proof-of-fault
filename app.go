@@ -141,6 +141,7 @@ func (a *App) ListSessions() ([]store.SessionInfo, error) {
 type LiveData struct {
 	Diagnosis report.Diagnosis `json:"diagnosis"`
 	Events    []store.Event    `json:"events"`
+	Incidents []store.Incident `json:"incidents"`
 }
 
 // GetLive returns event log and diagnosis without loading all samples.
@@ -148,8 +149,8 @@ func (a *App) GetLive(id int64) (LiveData, error) {
 	if err := a.ready(); err != nil {
 		return LiveData{}, err
 	}
-	d, evs, err := report.Live(a.store, id)
-	return LiveData{Diagnosis: d, Events: evs}, err
+	d, evs, ins, err := report.Live(a.store, id)
+	return LiveData{Diagnosis: d, Events: evs, Incidents: ins}, err
 }
 
 // SessionData bundles report and chart series for the UI.

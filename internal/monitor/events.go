@@ -172,10 +172,15 @@ func (r *runner) finishTick(t *tick) {
 		return i
 	}
 
+	lostFrom := n
 	if anyLost {
 		from := suffixFrom(func(i int) bool { return lost[i] })
+		lostFrom = from
 		if from < n {
 			r.touch(t, KindLoss, from, 0, 0, lost)
+			for i := from; i < n; i++ {
+				r.realLost[t.order[i].key]++
+			}
 		}
 		// Losses before the lost suffix: the path behind answered.
 		for i := 0; i < from; i++ {
@@ -200,6 +205,23 @@ func (r *runner) finishTick(t *tick) {
 		r.touch(t, KindSpike, from, peak, base[from], lost)
 	}
 	r.checkCustom(t, lost)
+
+	st := map[string]byte{}
+	for i, s := range t.order {
+		switch {
+		case lost[i]:
+			st[s.key] = 'x'
+		case spiked[i]:
+			st[s.key] = 's'
+		default:
+			st[s.key] = '.'
+		}
+	}
+	r.customStates(t, st)
+	ts := &tickState{t: t, state: st}
+	ts.class, ts.origin = classifyTick(t, st, lostFrom)
+	r.trackIncident(ts)
+
 	r.closeEpisodes(t.seq, false)
 }
 

@@ -42,6 +42,7 @@ type Report struct {
 	OutageSeconds map[string]float64 `json:"outageSeconds"`
 	Diagnosis     Diagnosis          `json:"diagnosis"`
 	Events        []store.Event      `json:"events"`
+	Incidents     []store.Incident   `json:"incidents"`
 	DataSHA256    string             `json:"dataSha256"`
 }
 
@@ -152,16 +153,24 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 	if err != nil {
 		return rep, nil, nil, err
 	}
-	rep.Diagnosis = Diagnose(rep.Events)
+	rep.Incidents, err = st.Incidents(id)
+	if err != nil {
+		return rep, nil, nil, err
+	}
+	rep.Diagnosis = DiagnoseAll(rep.Events, rep.Incidents)
 	rep.PathChanges = rep.Diagnosis.RouteChanges
 	return rep, series, samples, nil
 }
 
 // Live returns event log and diagnosis of a session without loading samples.
-func Live(st *store.Store, id int64) (Diagnosis, []store.Event, error) {
+func Live(st *store.Store, id int64) (Diagnosis, []store.Event, []store.Incident, error) {
 	evs, err := st.Events(id)
 	if err != nil {
-		return Diagnosis{}, nil, err
+		return Diagnosis{}, nil, nil, err
 	}
-	return Diagnose(evs), evs, nil
+	ins, err := st.Incidents(id)
+	if err != nil {
+		return Diagnosis{}, nil, nil, err
+	}
+	return DiagnoseAll(evs, ins), evs, ins, nil
 }

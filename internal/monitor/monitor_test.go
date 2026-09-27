@@ -116,3 +116,50 @@ func TestCustomPointEvent(t *testing.T) {
 		t.Fatalf("unexpected events %+v", evs)
 	}
 }
+
+func TestIncidents(t *testing.T) {
+	order := []series{
+		{key: "LAN", ttl: 1, zone: path.LAN, label: "Hop 1"},
+		{key: "ISP_EDGE", ttl: 2, zone: path.ISPEdge, label: "Hop 2"},
+		{key: "WAN", ttl: targetTTL, zone: path.WAN, label: "Ziel"},
+	}
+	alt := series{key: DevKey("1.1.1.1"), zone: path.WAN, label: "Gerät Cloudflare"}
+	ms := time.Millisecond
+	cases := []struct {
+		name          string
+		isp, wan, alt time.Duration
+		want          string
+	}{
+		{"provider access", -1, -1, -1, ClassISP},
+		{"only main target", 10 * ms, -1, 10 * ms, ClassTarget},
+		{"all targets, edge ok", 10 * ms, -1, -1, ClassISPCore},
+		{"only backup", 10 * ms, 20 * ms, -1, ClassAlt},
+	}
+	for _, c := range cases {
+		r := newTestRunner(t)
+		seq := 0
+		run := func(isp, wan, a time.Duration) {
+			seq++
+			r.seq = seq
+			r.finishTick(&tick{seq: seq, at: time.Now(), order: order, custom: []series{alt},
+				result: map[string]time.Duration{"LAN": ms, "ISP_EDGE": isp, "WAN": wan, alt.key: a}})
+		}
+		for i := 0; i < 15; i++ {
+			run(10*ms, 20*ms, 15*ms)
+		}
+		for i := 0; i < 4; i++ {
+			run(c.isp, c.wan, c.alt)
+		}
+		for i := 0; i < 6; i++ {
+			run(10*ms, 20*ms, 15*ms)
+		}
+		ins, _ := r.m.store.Incidents(r.sid)
+		if len(ins) != 1 || ins[0].Class != c.want || ins[0].Seconds != 4 || ins[0].PreRoll != incPreRoll {
+			t.Errorf("%s: got %+v", c.name, ins)
+			continue
+		}
+		if s := ins[0].Series[len(ins[0].Series)-1]; !s.Custom || len(s.States) != len(ins[0].Columns) {
+			t.Errorf("%s: bad matrix row %+v", c.name, s)
+		}
+	}
+}

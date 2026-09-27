@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/chevchelios420x/proof-of-fault/internal/monitor"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
@@ -32,7 +35,9 @@ type Diagnosis struct {
 	Harmless     int            `json:"harmless"`
 	Devices      map[string]int `json:"devices"` // seconds without answer per user-defined point
 	RouteChanges int            `json:"routeChanges"`
-	TopOrigin    string         `json:"topOrigin"` // most frequent hop where problems start
+	TopOrigin    string         `json:"topOrigin"`
+	Incidents    int            `json:"incidents"`
+	Classes      []ClassSummary `json:"classes"` // most frequent hop where problems start
 }
 
 // Diagnose derives the diagnosis from the event log.
@@ -223,4 +228,111 @@ func deviceLines(dev map[string]int) []string {
 		out = append(out, fmt.Sprintf("Manueller Messpunkt %s: insgesamt %d s ohne Antwort (Details im Ereignisprotokoll; fließt nicht in die Bewertung des Internetwegs ein).", k, dev[k]))
 	}
 	return out
+}
+
+// ClassSummary sums up the incidents of one class.
+type ClassSummary struct {
+	Class     string `json:"class"`
+	Name      string `json:"name"`
+	Count     int    `json:"count"`
+	Seconds   int    `json:"seconds"`
+	Longest   int    `json:"longest"`
+	LongestAt int64  `json:"longestAt"`
+}
+
+// DiagnoseAll combines event log and incidents. When incidents exist they
+// decide the verdict: they compare every measuring point second by second
+// (including backup targets) and are the most reliable basis.
+func DiagnoseAll(events []store.Event, incidents []store.Incident) Diagnosis {
+	d := Diagnose(events)
+	d.Incidents = len(incidents)
+	if len(incidents) == 0 {
+		return d
+	}
+	by := map[string]*ClassSummary{}
+	total := 0
+	for _, in := range incidents {
+		c := by[in.Class]
+		if c == nil {
+			c = &ClassSummary{Class: in.Class, Name: monitor.ClassName(in.Class)}
+			by[in.Class] = c
+		}
+		c.Count++
+		c.Seconds += in.Seconds
+		if in.Seconds > c.Longest {
+			c.Longest, c.LongestAt = in.Seconds, in.T
+		}
+		total += in.Seconds
+	}
+	for _, cl := range []string{monitor.ClassLAN, monitor.ClassISP, monitor.ClassISPCore, monitor.ClassTarget, monitor.ClassAlt, monitor.ClassDevice} {
+		if c := by[cl]; c != nil {
+			d.Classes = append(d.Classes, *c)
+		}
+	}
+	// Provider access and provider core both point to the provider.
+	group := map[string]int{}
+	for _, c := range d.Classes {
+		switch c.Class {
+		case monitor.ClassISP, monitor.ClassISPCore:
+			group["isp"] += c.Seconds
+		default:
+			group[c.Class] += c.Seconds
+		}
+	}
+	best := ""
+	for g, s := range group {
+		if best == "" || s > group[best] {
+			best = g
+		}
+	}
+	share := float64(group[best]) / float64(total)
+	switch {
+	case share >= 0.75 && len(incidents) >= 3:
+		d.Confidence = "hoch"
+	case share >= 0.5:
+		d.Confidence = "mittel"
+	default:
+		d.Confidence = "gering"
+	}
+	lines := []string{fmt.Sprintf("%d Störung(en) mit zusammen %s. Jede Störung wurde Sekunde für Sekunde über alle Messpunkte (Route und manuelle Hosts) ausgewertet:", len(incidents), fmtSec(total))}
+	for _, c := range d.Classes {
+		lines = append(lines, fmt.Sprintf("%d× %s, zusammen %s (längste: %s am %s).", c.Count, c.Name, fmtSec(c.Seconds), fmtSec(c.Longest),
+			time.UnixMilli(c.LongestAt).Format("02.01. 15:04:05")))
+	}
+	d.Explanation = append(lines, d.Explanation...)
+
+	if share < 0.5 {
+		d.Level = "unclear"
+		d.Headline = "Störungen unterschiedlicher Art – keine eindeutige Ursache. Details in der Störungsliste."
+		return d
+	}
+	ispCore := by[monitor.ClassISPCore] != nil && by[monitor.ClassISP] == nil
+	switch best {
+	case monitor.ClassLAN:
+		d.Level = "lan"
+		d.Headline = "Das Problem liegt in Ihrem eigenen Heimnetz: Während der Störungen war schon Ihr Router nicht erreichbar."
+	case "isp":
+		d.Level = "isp"
+		d.Headline = "Das Problem liegt beim Internetanbieter: Ihr Router war erreichbar, aber ab dem Anbieter-Zugang waren alle Ziele weg."
+		if ispCore {
+			d.Headline = "Das Problem liegt im Netz des Internetanbieters: Router und erster Anbieter-Knoten antworteten, trotzdem waren alle Ziele im Internet gleichzeitig weg."
+		}
+	case monitor.ClassTarget:
+		d.Level = "wan"
+		d.Headline = "Ihr Anschluss funktioniert: Nur das Hauptziel war zeitweise weg, die Ausweichziele waren gleichzeitig erreichbar. Das Problem liegt beim Zielserver bzw. auf dem Weg dorthin."
+		d.Advice = []string{"Den Betreiber des Hauptziels informieren; der Internetanbieter ist hier sehr wahrscheinlich nicht verantwortlich."}
+	case monitor.ClassAlt:
+		d.Level = "wan"
+		d.Headline = "Ihr Anschluss funktioniert: Nur einzelne Ausweichziele waren zeitweise weg. Das betrifft diese Server, nicht Ihre Verbindung."
+		d.Advice = []string{"Die betroffenen Server bzw. deren Betreiber prüfen (z. B. Firewall, Überlastung, VPN-Tunnel)."}
+	case monitor.ClassDevice:
+		d.Level = "lan"
+		d.Headline = "Nur einzelne Geräte im Heimnetz waren zeitweise weg – der Internetweg war nicht betroffen."
+		d.Advice = []string{"Die betroffenen Geräte prüfen (WLAN-Empfang, Energiesparmodus, Stromversorgung)."}
+	}
+	return d
+}
+
+func fmtSec(s int) string {
+	return (time.Duration(s) * time.Second).String()
 }

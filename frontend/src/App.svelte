@@ -5,6 +5,7 @@
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
   import Diagnosis from './Diagnosis.svelte'
+  import IncidentList from './IncidentList.svelte'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, hopColor, buildSeries, devColor } from './zones.js'
 
@@ -89,6 +90,9 @@
 
   // Event log and diagnosis of the running session.
   let liveEvents = []
+  let liveIncidents = []
+  let realLoss = {}
+  let liveChart, histChart
   let liveDiag = null
   let diagTimer = null
   function refreshDiag() {
@@ -99,6 +103,7 @@
         const x = await GetLive(status.sessionId)
         liveDiag = x.diagnosis
         liveEvents = x.events || []
+        liveIncidents = x.incidents || []
       } catch {}
     }, 1500)
   }
@@ -120,6 +125,11 @@
       liveVersion++
     })
     EventsOn('stats', (s) => (stats = s))
+    EventsOn('realloss', (x) => (realLoss = x))
+    EventsOn('incident', (inc) => {
+      liveIncidents = [...liveIncidents, inc]
+      refreshDiag()
+    })
     EventsOn('event', (e) => {
       liveEvents = [...liveEvents, e]
       refreshDiag()
@@ -142,7 +152,7 @@
     error = ''
     localStorage.setItem('target', target)
     live.reset(); liveVersion++
-    stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null
+    stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null; liveIncidents = []; realLoss = {}
     startedAt = Date.now()
     try { await StartMonitoring(target.trim()) } catch (e) { error = String(e) }
   }
@@ -224,6 +234,10 @@
               <div class="big">{fmt(s?.p50Ms)} <small>ms P50</small></div>
               <table>
                 <tr><td>Verlust</td><td class:bad={s?.lossPct > 0}>{fmt(s?.lossPct, 2)} % ({(s?.sent ?? 0) - (s?.received ?? 0)}/{s?.sent ?? 0})</td></tr>
+                {#if z !== 'WAN' && (s?.sent ?? 0) - (s?.received ?? 0) > 0}
+                  <tr title="Nur Verluste, bei denen auch alle folgenden Messpunkte bis zum Ziel nicht antworteten. Der Rest ist ICMP-Drosselung dieses Hops und harmlos.">
+                    <td>davon echt (bis Ziel)</td><td class:bad={realLoss[z] > 0}>{realLoss[z] || 0}</td></tr>
+                {/if}
                 <tr><td>Jitter (RFC 3550)</td><td>{fmt(s?.jitterMs, 2)} ms</td></tr>
                 <tr><td>P95 / P99</td><td>{fmt(s?.p95Ms)} / {fmt(s?.p99Ms)} ms</td></tr>
                 <tr><td>Min / Max</td><td>{fmt(s?.minMs)} / {fmt(s?.maxMs)} ms</td></tr>
@@ -239,10 +253,14 @@
 
       <section class="card">
         <h2>Latenzverlauf (live)</h2>
-        <Chart live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
+        <Chart bind:this={liveChart} bands={liveIncidents} live timeline={live} series={liveSeries} {hidden} onToggle={(k, show) => setHidden(k, !show)} version={liveVersion} />
       </section>
 
       <div class="two">
+        <section class="card">
+          <h2>Störungen – wer hat wann nicht geantwortet?</h2>
+          <IncidentList incidents={liveIncidents} onSelect={(i) => liveChart?.zoomTo(i.t - 60000, i.end + 60000)} />
+        </section>
         <section class="card">
           <h2>Ereignisprotokoll</h2>
           <EventLog events={liveEvents} />
@@ -365,8 +383,12 @@
           </section>
           <section class="card">
             <h2>Latenzverlauf</h2>
-            <Chart timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
+            <Chart bind:this={histChart} bands={r.incidents || []} timeline={hist} series={buildSeries({ hops: r.hops || [], reps: [], names: r.hops ? Object.fromEntries(r.hops.map((h) => [h.addr, h.name || ''])) : {}, keys: (sessionData.series || []).map((x) => x.zone), custom: (status.custom || []).map((c) => ({ ...c, enabled: true })) })}
               hidden={histHidden} onToggle={(k, show) => { show ? histHidden.delete(k) : histHidden.add(k); histHidden = new Set(histHidden) }} version={histVersion} />
+          </section>
+          <section class="card">
+            <h2>Störungen – wer hat wann nicht geantwortet?</h2>
+            <IncidentList incidents={r.incidents || []} onSelect={(i) => histChart?.zoomTo(i.t - 60000, i.end + 60000)} />
           </section>
           <section class="card">
             <h2>Ereignisprotokoll</h2>

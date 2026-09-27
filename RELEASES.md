@@ -6,6 +6,25 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.6.0 – 2026-09-27
+
+- **Störungen mit Sekunden-Matrix** (live, im Verlauf und im HTML-Bericht): Sobald
+  das Ziel, ein Ausweichziel oder ein manuelles Gerät nicht antwortet, wird eine
+  Störung aufgezeichnet – für **jeden Hop und jeden manuellen Host** Sekunde für
+  Sekunde (antwortet / langsam / keine Antwort, mit RTT als Tooltip), inklusive
+  10 s davor und 5 s danach. So sieht man auf einen Blick, wer während des
+  Ausfalls nicht mehr geantwortet hat.
+- **Manuelle Hosts in Zone WAN gelten als Ausweichziele** (z. B. 1.1.1.1, eigener
+  VPS). Jede Störung wird eingeordnet: Heimnetz · Anbieter-Zugang · Anbieter-Netz
+  (alle Ziele weg, Zugang antwortet) · nur Hauptziel · nur Ausweichziel · nur
+  LAN-Gerät.
+- **Diagnose basiert jetzt auf diesen Störungen**: Anzahl und Dauer je Art, jeweils
+  längste Störung mit Zeitpunkt, klare Aussage und Empfehlung.
+- Störungen werden im Latenzdiagramm als farbige Bereiche hinterlegt; „im Diagramm
+  zeigen“ zoomt direkt auf eine Störung.
+- Messpunkt-Karten zeigen zusätzlich „davon echt (bis Ziel)“: nur Verluste, bei
+  denen auch alle folgenden Messpunkte ausfielen – der Rest ist ICMP-Drosselung.
+
 ## v0.5.0 – 2026-09-27
 
 - **Manuelle Messpunkte** (Route-Karte → „Weitere Messpunkte“): beliebige IPs oder

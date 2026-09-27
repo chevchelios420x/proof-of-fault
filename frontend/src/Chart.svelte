@@ -8,6 +8,7 @@
   export let onToggle = (key, show) => {} // legend click
   export let version = 0 // bump to redraw
   export let live = false // pause updates while the mouse is over the chart
+  export let bands = [] // incidents [{t, end, class}] shaded in the plot
 
   let el, plot, ro, builtFor = ''
   let paused = false
@@ -16,8 +17,23 @@
   $: signature = series.map((s) => s.key + '=' + s.label + '=' + s.color).join('|')
 
   // Red ticks per series lane at the top of the plot mark packet loss.
+  const BAND = { target: 'rgba(58,90,140,0.15)', alt: 'rgba(58,90,140,0.15)', lan: 'rgba(42,157,143,0.18)', device: 'rgba(42,157,143,0.18)' }
   const lossPlugin = {
     hooks: {
+      drawAxes: (u) => {
+        const ctx = u.ctx
+        ctx.save()
+        for (const b of bands) {
+          let x0 = u.valToPos(b.t / 1000, 'x', true)
+          let x1 = u.valToPos(b.end / 1000, 'x', true)
+          x0 = Math.max(x0, u.bbox.left)
+          x1 = Math.min(x1, u.bbox.left + u.bbox.width)
+          if (x1 < x0) continue
+          ctx.fillStyle = BAND[b.class] || 'rgba(214,40,40,0.18)'
+          ctx.fillRect(x0, u.bbox.top, Math.max(2, x1 - x0), u.bbox.height)
+        }
+        ctx.restore()
+      },
       draw: (u) => {
         const ctx = u.ctx
         const lane = 6 * devicePixelRatio
@@ -95,6 +111,14 @@
   function leave() { paused = false; refresh() }
   function resetZoom() { zoomed = false; refresh() }
 
+  // zoomTo shows the given time range (unix ms), e.g. an incident.
+  export function zoomTo(fromMs, toMs) {
+    if (!plot) return
+    zoomed = true
+    plot.setScale('x', { min: fromMs / 1000, max: toMs / 1000 })
+  }
+  $: if (plot && bands) plot.redraw(false)
+
   onMount(() => {
     ro = new ResizeObserver(() => plot?.setSize({ width: el.clientWidth, height: 320 }))
     ro.observe(el)
@@ -106,7 +130,7 @@
 <div bind:this={el} class="chart" on:mouseenter={enter} on:mouseleave={leave} on:dblclick={resetZoom}></div>
 <p class="hint">
   {#if live && paused}<b class="paused">⏸ Angehalten, solange die Maus über dem Diagramm ist.</b>{/if}
-  Ziehen = Zoom (bleibt bei neuen Daten erhalten), Doppelklick = zurücksetzen. Rote Markierungen oben = Paketverlust
+  Ziehen = Zoom (bleibt bei neuen Daten erhalten), Doppelklick = zurücksetzen. Rote Flächen = Störungen (blau: nur Ziel/Ausweichziel, grün: Heimnetz). Rote Markierungen oben = Paketverlust
   (je sichtbarer Linie eine Spur, Reihenfolge wie in der Legende). Linien per Legende oder Route-Tabelle ein-/ausblenden.
 </p>
 

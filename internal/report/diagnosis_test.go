@@ -1,6 +1,7 @@
 package report
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
@@ -25,5 +26,19 @@ func TestDiagnose(t *testing.T) {
 	}
 	if d.TopOrigin == "" {
 		t.Fatal("missing origin")
+	}
+}
+
+func TestHTMLWithIncident(t *testing.T) {
+	in := store.Incident{ID: 1, T: 1000, End: 5000, Seconds: 4, Class: "isp", Title: "x", PreRoll: 1, PostRoll: 1,
+		Columns: []int64{0, 1000, 2000, 3000, 4000, 5000},
+		Series:  []store.IncidentSeries{{Label: "Ziel", States: ".xxxx.", RTT: []float64{10, -1, -1, -1, -1, 11}}}}
+	r := Report{Incidents: []store.Incident{in}, Diagnosis: DiagnoseAll(nil, []store.Incident{in})}
+	var b strings.Builder
+	if err := WriteHTML(&b, r, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), `class="c-x"`) || r.Diagnosis.Level != "isp" {
+		t.Fatalf("matrix or diagnosis missing: level=%s", r.Diagnosis.Level)
 	}
 }

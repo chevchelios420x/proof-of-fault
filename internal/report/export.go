@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chevchelios420x/proof-of-fault/internal/monitor"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
 )
@@ -94,10 +95,13 @@ var funcs = template.FuncMap{
 		}
 		return time.UnixMilli(ms).Format("02.01.2006 15:04:05")
 	},
-	"dur":  func(sec float64) string { return (time.Duration(sec) * time.Second).Round(time.Second).String() },
-	"f1":   func(v float64) string { return fmt.Sprintf("%.1f", v) },
-	"kind": kindText,
-	"f2":   func(v float64) string { return fmt.Sprintf("%.2f", v) },
+	"dur":    func(sec float64) string { return (time.Duration(sec) * time.Second).Round(time.Second).String() },
+	"f1":     func(v float64) string { return fmt.Sprintf("%.1f", v) },
+	"kind":   kindText,
+	"cls":    monitor.ClassName,
+	"inc":    func(i int) int { return i + 1 },
+	"matrix": matrixHTML,
+	"f2":     func(v float64) string { return fmt.Sprintf("%.2f", v) },
 }
 
 var htmlTpl = template.Must(template.New("r").Funcs(funcs).Parse(`<!doctype html>
@@ -111,6 +115,12 @@ th{background:#f1f1f1}
 .verdict{background:#fff4e5;border-left:6px solid #e76f51;padding:10px 16px}
 .lvl-none{background:#eef8f1;border-color:#2a9d8f}.lvl-lan{border-color:#2a9d8f}.lvl-wan{border-color:#3a5a8c}
 .log td{text-align:left;vertical-align:top}.log td:nth-child(1),.log td:nth-child(2){white-space:nowrap}
+.c{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
+.c-ok{background:#52b788}.c-s{background:#f4a261}.c-x{background:#d62828}.c-n{background:#ddd}
+table.mx{width:auto;border-collapse:separate;border-spacing:1px}table.mx td{padding:0;border:none;width:9px;height:14px}
+table.mx td.lbl{padding:0 8px 0 0;width:auto;white-space:nowrap;text-align:left;font-size:12px}
+table.mx td.pre{opacity:.45}.inc{page-break-inside:avoid;margin-bottom:18px}.mxwrap{overflow-x:auto}
+.inclist td{text-align:left}
 .sev-crit{background:#fde2e2}.sev-warn{background:#fff6e0}.sev-info td{color:#666}.sev-ok{background:#e9f7ef}
 .chart{width:100%;height:auto;border:1px solid #eee}
 small{color:#666}
@@ -136,6 +146,20 @@ small{color:#666}
 <h2>Ausfälle</h2>
 {{if .R.Outages}}<table><tr><th>Zone (Ursache)</th><th>Beginn</th><th>Ende</th><th>Dauer (s)</th></tr>
 {{range .R.Outages}}<tr><td>{{.Zone}}</td><td>{{ts .Start}}</td><td>{{ts .End}}</td><td>{{f1 .Seconds}}</td></tr>{{end}}</table>
+{{else}}<p>Keine.</p>{{end}}
+
+<h2>Störungen ({{len .R.Incidents}})</h2>
+{{if .R.Incidents}}
+<small>Eine Störung beginnt, sobald das Ziel, ein Ausweichziel oder ein manuell eingetragenes Gerät nicht antwortet (Verluste nur an einem Zwischen-Hop zählen nicht). Die Matrix zeigt jede Sekunde für jeden Messpunkt: <span class="c c-ok"></span> antwortet, <span class="c c-s"></span> deutlich langsamer als normal, <span class="c c-x"></span> keine Antwort, <span class="c c-n"></span> nicht gemessen. Blasse Spalten: 10 s davor bzw. 5 s danach (zum Vergleich).</small>
+<table class="inclist"><tr><th>#</th><th>Beginn</th><th>Dauer</th><th>Art</th><th>Beschreibung</th></tr>
+{{range $i, $in := .R.Incidents}}<tr><td><a href="#inc{{$in.ID}}">{{inc $i}}</a></td><td>{{ts $in.T}}</td><td>{{$in.Seconds}} s</td><td>{{cls $in.Class}}</td><td>{{$in.Title}}</td></tr>
+{{end}}</table>
+{{range $i, $in := .R.Incidents}}{{if lt $i 200}}
+<div class="inc" id="inc{{$in.ID}}"><h3>Störung {{inc $i}}: {{$in.Title}}</h3>
+<p><b>{{ts $in.T}} – {{ts $in.End}}</b> · {{$in.Detail}}</p>
+{{matrix $in}}</div>
+{{end}}{{end}}
+{{if gt (len .R.Incidents) 200}}<p><small>Matrix nur für die ersten 200 Störungen; alle sind in der Liste oben und im Ereignis-Export enthalten.</small></p>{{end}}
 {{else}}<p>Keine.</p>{{end}}
 
 <h2>Ereignisprotokoll</h2>
@@ -205,4 +229,31 @@ func WriteEventsCSV(w io.Writer, events []store.Event) error {
 			kindText(e.Kind), e.Severity, e.Zone, e.TTL, e.Addr, clean(e.Title), clean(e.Detail), e.Count, e.ValueMs)
 	}
 	return bw.Flush()
+}
+
+// matrixHTML renders the per-second state matrix of an incident.
+func matrixHTML(in store.Incident) template.HTML {
+	var b strings.Builder
+	b.WriteString(`<div class="mxwrap"><table class="mx">`)
+	state := map[byte]string{'.': "c-ok", 's': "c-s", 'x': "c-x", '-': "c-n"}
+	text := map[byte]string{'.': "antwortet", 's': "langsam", 'x': "keine Antwort", '-': "nicht gemessen"}
+	for _, s := range in.Series {
+		fmt.Fprintf(&b, `<tr><td class="lbl">%s</td>`, template.HTMLEscapeString(s.Label))
+		for i := 0; i < len(s.States) && i < len(in.Columns); i++ {
+			c := s.States[i]
+			pre := ""
+			if i < in.PreRoll || i >= len(in.Columns)-in.PostRoll {
+				pre = " pre"
+			}
+			rtt := ""
+			if i < len(s.RTT) && s.RTT[i] >= 0 {
+				rtt = fmt.Sprintf(" · %.1f ms", s.RTT[i])
+			}
+			fmt.Fprintf(&b, `<td class="%s%s" title="%s · %s%s"></td>`, state[c], pre,
+				time.UnixMilli(in.Columns[i]).Format("15:04:05"), text[c], rtt)
+		}
+		b.WriteString("</tr>")
+	}
+	b.WriteString("</table></div>")
+	return template.HTML(b.String())
 }
