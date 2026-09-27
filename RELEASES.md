@@ -6,6 +6,14 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.14.2 – 2026-09-27
+
+- Lange Störungen sprengen das Layout nicht mehr: Die Seite scrollt nie
+  horizontal, gescrollt wird nur innerhalb der Störungs-Matrix bzw. des
+  Ereignisprotokolls. Die Zeilenbeschriftungen und Zonen-Überschriften der
+  Matrix bleiben beim horizontalen Scrollen links stehen; lange Texte brechen um.
+- Störungen: Buttons „alle aufklappen“ / „alle einklappen“.
+
 ## v0.14.1 – 2026-09-27
 
 - Fehlerbehebung TCP-Check unter Windows: Eine abgelehnte Verbindung (Port

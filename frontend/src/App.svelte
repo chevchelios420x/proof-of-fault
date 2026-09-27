@@ -487,7 +487,9 @@
   nav .gear { order: 3; font-size: 18px; padding: 2px 10px; margin-left: 8px; }
   nav .gear:hover { color: #fff; }
   .del-session { padding: 6px 10px; }
-  main { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+  main { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; max-width: 100vw; box-sizing: border-box; }
+  main > :global(*) { min-width: 0; }
+  main :global(.card) { min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }
   h2 { font-size: 15px; margin: 0 0 8px; }
   h3 { font-size: 13px; margin: 0 0 4px; color: var(--muted); }
   .controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
@@ -502,8 +504,8 @@
   .zone .big small { font-size: 12px; font-weight: 400; color: var(--muted); }
   .bad { color: var(--bad); font-weight: 600; }
   .muted { color: var(--muted); }
-  .two { display: grid; grid-template-columns: 1fr; gap: 14px; }
-  .history { display: grid; grid-template-columns: 240px 1fr; gap: 14px; align-items: start; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .history { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; align-items: start; }
   .session { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
   .session.active { border-color: var(--accent); background: var(--sel-bg); }
   .detail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }

@@ -44,7 +44,8 @@
 
 <style>
   .bar { display: flex; gap: 16px; align-items: center; font-size: 12px; margin-bottom: 6px; flex-wrap: wrap; }
-  .log { max-height: 420px; overflow: auto; }
+  .log { max-height: 420px; overflow: auto; max-width: 100%; }
+  td.txt { overflow-wrap: anywhere; }
   td { vertical-align: top; }
   td.txt { text-align: left; }
   td:nth-child(-n + 3) { white-space: nowrap; }
