@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS sample (
 	rtt_us     INTEGER            -- NULL = loss
 );
 CREATE INDEX IF NOT EXISTS sample_idx ON sample(session_id, zone, ts_ns);
+CREATE TABLE IF NOT EXISTS hop_zone (
+	addr TEXT PRIMARY KEY,
+	zone TEXT NOT NULL            -- user override, remembered across sessions
+);
 CREATE TABLE IF NOT EXISTS outage (
 	session_id INTEGER NOT NULL,
 	zone       TEXT NOT NULL,     -- zone the fault is attributed to
@@ -312,4 +316,32 @@ func (s *Store) PathChanges(id int64) (int, error) {
 		n--
 	}
 	return n, err
+}
+
+// HopZones returns the user's zone overrides by hop address.
+func (s *Store) HopZones() (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT addr, zone FROM hop_zone`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var a, z string
+		if err := rows.Scan(&a, &z); err != nil {
+			return nil, err
+		}
+		out[a] = z
+	}
+	return out, rows.Err()
+}
+
+// SetHopZone remembers a zone override; an empty zone removes it.
+func (s *Store) SetHopZone(addr, zone string) error {
+	if zone == "" {
+		_, err := s.db.Exec(`DELETE FROM hop_zone WHERE addr=?`, addr)
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO hop_zone(addr, zone) VALUES(?,?) ON CONFLICT(addr) DO UPDATE SET zone=excluded.zone`, addr, zone)
+	return err
 }

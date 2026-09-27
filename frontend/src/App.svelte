@@ -1,10 +1,10 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import { Timeline } from './timeline.js'
-  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur } from './zones.js'
+  import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, seriesColor } from './zones.js'
 
   let tab = 'live'
   let target = localStorage.getItem('target') || '1.1.1.1'
@@ -27,10 +27,29 @@
   let exportMsg = ''
 
   $: running = ['resolving', 'discovering', 'running'].includes(status.state)
+  $: watched = status.watched || []
   $: liveZones = (status.reps || []).map((r) => r.zone)
+  $: liveKeys = [...liveZones, ...(status.hops || []).filter((h) => h.responsive && watched.includes(h.addr)).map((h) => hopKey(h.addr))]
+
+  function loadWatched() {
+    try { return JSON.parse(localStorage.getItem('watchedHops') || '[]') } catch { return [] }
+  }
+
+  async function toggleHop(addr, on) {
+    const w = new Set(loadWatched())
+    on ? w.add(addr) : w.delete(addr)
+    localStorage.setItem('watchedHops', JSON.stringify([...w]))
+    try { await SetHopWatched(addr, on) } catch (e) { error = String(e) }
+  }
+
+  async function changeZone(addr, zone) {
+    try { await SetHopZone(addr, zone === 'auto' ? '' : zone) } catch (e) { error = String(e) }
+  }
 
   onMount(async () => {
     status = await GetStatus()
+    // Restore the remembered hop selection (backend keeps it only in memory).
+    for (const a of loadWatched()) if (!(status.watched || []).includes(a)) await SetHopWatched(a, true)
     if (status.state === 'error') error = status.message
     EventsOn('status', (s) => {
       status = s
@@ -153,7 +172,7 @@
 
       <section class="card">
         <h2>Latenzverlauf (live)</h2>
-        <Chart timeline={live} zones={liveZones} version={liveVersion} />
+        <Chart timeline={live} zones={liveKeys} hops={status.hops || []} version={liveVersion} />
       </section>
 
       <div class="two">
@@ -170,12 +189,35 @@
         </section>
         <section class="card">
           <h2>Route</h2>
-          <table>
-            <tr><th>TTL</th><th>Adresse</th><th>Zone</th><th>RTT</th></tr>
+          <table class="route">
+            <tr><th>TTL</th><th>Adresse</th><th>Zone</th><th>RTT</th><th title="Eigene Latenzlinie im Diagramm">Diagramm</th></tr>
             {#each status.hops || [] as h}
-              <tr><td>{h.ttl}</td><td>{h.responsive ? h.addr : '* (filtert ICMP – kein Fehler)'}</td><td style="color:{ZONE_COLOR[h.zone]}">{h.zone}</td><td>{h.responsive ? fmt(h.rttMs) + ' ms' : ''}</td></tr>
+              <tr>
+                <td>{h.ttl}</td>
+                <td>{h.responsive ? h.addr : '* (filtert ICMP – kein Fehler)'}</td>
+                <td>
+                  {#if h.responsive}
+                    <select style="color:{ZONE_COLOR[h.zone]}" value={h.manual ? h.zone : 'auto'}
+                      on:change={(e) => changeZone(h.addr, e.target.value)}
+                      title="Zone dieses Hops. Die Auswahl wird pro Hop-Adresse gespeichert.">
+                      <option value="auto">{h.manual ? 'Auto' : `Auto (${h.zone})`}</option>
+                      {#each ZONES as z}<option value={z}>{z}</option>{/each}
+                    </select>
+                  {:else}<span style="color:{ZONE_COLOR[h.zone]}">{h.zone}</span>{/if}
+                </td>
+                <td>{h.responsive ? fmt(h.rttMs) + ' ms' : ''}</td>
+                <td>
+                  {#if h.responsive && h.addr !== status.targetIp}
+                    <label class="toggle">
+                      <input type="checkbox" checked={watched.includes(h.addr)} on:change={(e) => toggleHop(h.addr, e.target.checked)} />
+                      <span class="dot" style="background:{seriesColor(hopKey(h.addr))}"></span>
+                    </label>
+                  {/if}
+                </td>
+              </tr>
             {/each}
           </table>
+          <p class="muted small">Zone ändern: gilt sofort und wird für diesen Hop dauerhaft gemerkt. „Auto“ stellt die automatische Einteilung wieder her.</p>
         </section>
       </div>
     {/if}
@@ -218,7 +260,7 @@
           </section>
           <section class="card">
             <h2>Latenzverlauf</h2>
-            <Chart timeline={hist} zones={(r.zones || []).map((z) => z.zone)} version={histVersion} />
+            <Chart timeline={hist} zones={(sessionData.series || []).map((x) => x.zone)} hops={r.hops || []} version={histVersion} />
           </section>
           <section class="card">
             <h2>Ausfälle</h2>
@@ -261,5 +303,9 @@
   .session.active { border-color: var(--accent); background: #eef2fa; }
   .detail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .route select { padding: 2px 4px; font-size: 12px; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .small { font-size: 12px; margin: 6px 0 0; }
   .verdict { background: #fff4e5; border-left: 4px solid var(--isp); padding: 8px 12px; margin: 8px 0 0; }
 </style>

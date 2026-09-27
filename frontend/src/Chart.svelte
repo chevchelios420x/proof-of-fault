@@ -1,10 +1,11 @@
 <script>
   import { onMount, onDestroy } from 'svelte'
   import uPlot from 'uplot'
-  import { ZONE_COLOR } from './zones.js'
+  import { seriesColor, seriesLabel } from './zones.js'
 
   export let timeline
-  export let zones = []
+  export let zones = [] // series keys: zones and hop keys
+  export let hops = [] // for hop labels
   export let version = 0 // bump to redraw
 
   let el, plot, ro, builtFor = ''
@@ -18,7 +19,6 @@
         ctx.save()
         zones.forEach((z, zi) => {
           const ys = u.data[zi + 1]
-          ctx.fillStyle = ZONE_COLOR[z]
           const top = u.bbox.top + zi * (lane + 2)
           for (let i = 0; i < ys.length; i++) {
             if (ys[i] !== null) continue
@@ -35,7 +35,7 @@
 
   function build() {
     plot?.destroy()
-    builtFor = zones.join(',')
+    builtFor = zones.join(',') + '|' + zones.map((z) => seriesLabel(z, hops)).join(',')
     const opts = {
       width: el.clientWidth,
       height: 320,
@@ -45,8 +45,8 @@
       series: [
         { value: (u, v) => (v == null ? '–' : new Date(v * 1000).toLocaleTimeString('de-DE')) },
         ...zones.map((z) => ({
-          label: z,
-          stroke: ZONE_COLOR[z],
+          label: seriesLabel(z, hops),
+          stroke: seriesColor(z),
           width: 1.2,
           spanGaps: false,
           value: (u, v) => (v == null ? 'Verlust' : v.toFixed(1) + ' ms'),
@@ -57,7 +57,7 @@
     plot = new uPlot(opts, timeline.data(zones), el)
   }
 
-  $: if (el && zones.length && builtFor !== zones.join(',')) build()
+  $: if (el && zones.length && builtFor !== zones.join(',') + '|' + zones.map((z) => seriesLabel(z, hops)).join(',')) build()
   $: if (plot && version >= 0) plot.setData(timeline.data(zones), true)
 
   onMount(() => {
@@ -68,7 +68,7 @@
 </script>
 
 <div bind:this={el} class="chart"></div>
-<p class="hint">Ziehen = Zoom, Doppelklick = zurücksetzen. Rote Markierungen oben = Paketverlust (je Zone eine Spur).</p>
+<p class="hint">Ziehen = Zoom, Doppelklick = zurücksetzen. Rote Markierungen oben = Paketverlust (je Linie eine Spur, gleiche Reihenfolge wie die Legende). Linien lassen sich per Klick auf die Legende ausblenden.</p>
 
 <style>
   .chart { width: 100%; min-height: 320px; }

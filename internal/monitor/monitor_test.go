@@ -27,7 +27,7 @@ func feed(r *runner, at time.Time, ok ...bool) {
 		if !ok[i] {
 			rtt = -1
 		}
-		r.handle(result{zone: z, at: at, rtt: rtt})
+		r.handle(result{zone: string(z), at: at, rtt: rtt})
 	}
 }
 

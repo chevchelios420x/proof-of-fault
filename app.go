@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/monitor"
+	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/probe"
 	"github.com/chevchelios420x/proof-of-fault/internal/report"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
@@ -75,6 +76,24 @@ func (a *App) StopMonitoring() {
 	if a.monitor != nil {
 		a.monitor.Stop()
 	}
+}
+
+// SetHopWatched toggles the individual latency line of a hop.
+func (a *App) SetHopWatched(addr string, on bool) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	a.monitor.SetHopWatched(addr, on)
+	return nil
+}
+
+// SetHopZone assigns a zone to a hop (remembered per hop address); an empty
+// zone restores the automatic classification.
+func (a *App) SetHopZone(addr, zone string) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.monitor.SetHopZone(addr, path.Zone(zone))
 }
 
 // GetStatus returns the monitor status.

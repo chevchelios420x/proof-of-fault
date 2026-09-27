@@ -30,7 +30,11 @@ type Hop struct {
 	Responsive bool    `json:"responsive"`
 	RTTMs      float64 `json:"rttMs"`
 	Zone       Zone    `json:"zone"`
+	Manual     bool    `json:"manual"` // zone set by the user
 }
+
+// ValidZone reports whether z is one of the three zones.
+func ValidZone(z Zone) bool { return z == LAN || z == ISPEdge || z == WAN }
 
 const (
 	maxTTL        = 30
@@ -40,8 +44,9 @@ const (
 )
 
 // Discover traces the path to dst. Silent hops (ICMP filtered) are kept with
-// Responsive=false; they are not treated as failures.
-func Discover(ctx context.Context, p probe.Prober, dst netip.Addr) ([]Hop, error) {
+// Responsive=false; they are not treated as failures. overrides maps hop
+// addresses to user-chosen zones.
+func Discover(ctx context.Context, p probe.Prober, dst netip.Addr, overrides map[string]Zone) ([]Hop, error) {
 	hops := make([]Hop, maxTTL)
 	sem := make(chan struct{}, parallelLimit)
 	var wg sync.WaitGroup
@@ -83,7 +88,7 @@ func Discover(ctx context.Context, p probe.Prober, dst netip.Addr) ([]Hop, error
 	for len(hops) > 0 && !hops[len(hops)-1].Responsive {
 		hops = hops[:len(hops)-1]
 	}
-	Classify(hops)
+	Classify(hops, overrides)
 	return hops, nil
 }
 
@@ -102,8 +107,9 @@ func isLocal(a netip.Addr) bool {
 //     nets) up to and including the first public address.
 //   - WAN: everything behind that.
 //
-// Silent hops inherit the zone of the region they are in.
-func Classify(hops []Hop) {
+// Silent hops inherit the zone of the region they are in. Afterwards user
+// overrides (by hop address) replace the automatic zone.
+func Classify(hops []Hop, overrides map[string]Zone) {
 	zone := LAN
 	sawEdgeHop := false
 	for i := range hops {
@@ -121,6 +127,13 @@ func Classify(hops []Hop) {
 		if zone == ISPEdge && err == nil && !cgnat.Contains(a) && !isLocal(a) {
 			// First public provider address closes the edge zone.
 			sawEdgeHop = true
+		}
+	}
+	for i := range hops {
+		h := &hops[i]
+		h.Manual = false
+		if z, ok := overrides[h.Addr]; ok && h.Addr != "" && ValidZone(z) {
+			h.Zone, h.Manual = z, true
 		}
 	}
 }
@@ -168,14 +181,15 @@ func Representatives(ctx context.Context, p probe.Prober, hops []Hop, target net
 		}
 		reps = append(reps, Representative{
 			Zone: c.zone, Addr: a, IP: a.String(), TTL: c.hop.TTL,
-			Direct: answersEcho(ctx, p, a),
+			Direct: AnswersEcho(ctx, p, a),
 		})
 	}
 	reps = append(reps, Representative{Zone: WAN, Addr: target, IP: target.String(), Direct: true})
 	return reps
 }
 
-func answersEcho(ctx context.Context, p probe.Prober, a netip.Addr) bool {
+// AnswersEcho reports whether a answers direct echo requests.
+func AnswersEcho(ctx context.Context, p probe.Prober, a netip.Addr) bool {
 	for i := 0; i < 3; i++ {
 		r, err := p.Probe(ctx, probe.Request{Dst: a, Timeout: time.Second})
 		if err == nil && r.Kind == probe.EchoReply {

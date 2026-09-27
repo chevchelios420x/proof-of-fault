@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,13 +48,17 @@ type Status struct {
 	TargetIP  string                `json:"targetIp"`
 	Reps      []path.Representative `json:"reps"`
 	Hops      []path.Hop            `json:"hops"`
+	Watched   []string              `json:"watched"` // hop addresses probed individually
 }
+
+// HopKey is the series key used for individually watched hops.
+func HopKey(addr string) string { return "hop:" + addr }
 
 // LiveSample is sent to the UI in batches once per second.
 type LiveSample struct {
-	Zone  path.Zone `json:"zone"`
-	T     int64     `json:"t"`     // unix ms
-	RTTMs float64   `json:"rttMs"` // -1 = loss
+	Zone  string  `json:"zone"`  // zone or HopKey(addr)
+	T     int64   `json:"t"`     // unix ms
+	RTTMs float64 `json:"rttMs"` // -1 = loss
 }
 
 // OutageEvent is sent when the attributed fault zone changes.
@@ -69,15 +74,17 @@ type Monitor struct {
 	store  *store.Store
 	emit   Emitter
 
-	mu     sync.Mutex
-	cancel context.CancelFunc
-	done   chan struct{}
-	status Status
+	mu      sync.Mutex
+	cancel  context.CancelFunc
+	done    chan struct{}
+	cmds    chan func(*runner)
+	status  Status
+	watched map[string]bool
 }
 
 // New creates a monitor.
 func New(p probe.Prober, s *store.Store, emit Emitter) *Monitor {
-	return &Monitor{prober: p, store: s, emit: emit, status: Status{State: "idle"}}
+	return &Monitor{prober: p, store: s, emit: emit, status: Status{State: "idle"}, watched: map[string]bool{}}
 }
 
 // Status returns the current status.
@@ -105,7 +112,8 @@ func (m *Monitor) Start(target string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 	m.done = make(chan struct{})
-	m.status = Status{State: "resolving", Target: target}
+	m.cmds = make(chan func(*runner), 16)
+	m.status = Status{State: "resolving", Target: target, Watched: m.watchedList()}
 	m.mu.Unlock()
 
 	go func() {
@@ -120,6 +128,74 @@ func (m *Monitor) Start(target string) error {
 		m.cancel = nil
 		m.mu.Unlock()
 	}()
+	return nil
+}
+
+// send runs f inside the session loop; it reports false if no session runs.
+func (m *Monitor) send(f func(*runner)) bool {
+	m.mu.Lock()
+	cmds, done, running := m.cmds, m.done, m.cancel != nil
+	m.mu.Unlock()
+	if !running {
+		return false
+	}
+	select {
+	case cmds <- f:
+		return true
+	case <-done:
+		return false
+	}
+}
+
+func (m *Monitor) watchedList() []string {
+	out := make([]string, 0, len(m.watched))
+	for a := range m.watched {
+		out = append(out, a)
+	}
+	return out
+}
+
+func (m *Monitor) overrides() map[string]path.Zone {
+	raw, _ := m.store.HopZones()
+	out := make(map[string]path.Zone, len(raw))
+	for a, z := range raw {
+		out[a] = path.Zone(z)
+	}
+	return out
+}
+
+// SetHopWatched adds or removes a hop from individual probing (chart line).
+func (m *Monitor) SetHopWatched(addr string, on bool) {
+	m.mu.Lock()
+	if on {
+		m.watched[addr] = true
+	} else {
+		delete(m.watched, addr)
+	}
+	m.status.Watched = m.watchedList()
+	m.mu.Unlock()
+	m.send(func(r *runner) { r.syncWatched() })
+	m.setStatus(func(*Status) {})
+}
+
+// SetHopZone stores a user zone for a hop address (remembered permanently;
+// "" restores automatic classification) and applies it immediately.
+func (m *Monitor) SetHopZone(addr string, zone path.Zone) error {
+	if zone != "" && !path.ValidZone(zone) {
+		return fmt.Errorf("ungültige Zone %q", zone)
+	}
+	if err := m.store.SetHopZone(addr, string(zone)); err != nil {
+		return err
+	}
+	ov := m.overrides()
+	if m.send(func(r *runner) { r.reclassify(ov) }) {
+		return nil
+	}
+	m.setStatus(func(s *Status) {
+		hops := append([]path.Hop(nil), s.Hops...)
+		path.Classify(hops, ov)
+		s.Hops = hops
+	})
 	return nil
 }
 
@@ -170,7 +246,7 @@ func (m *Monitor) run(ctx context.Context, target string) error {
 		s.State, s.SessionID, s.TargetIP = "discovering", sid, dst.String()
 		s.Message = "Ermittle Route (Traceroute) …"
 	})
-	hops, err := path.Discover(ctx, m.prober, dst)
+	hops, err := path.Discover(ctx, m.prober, dst, m.overrides())
 	if err != nil {
 		return err
 	}
@@ -197,12 +273,21 @@ type runner struct {
 
 	results chan result
 	zones   map[path.Zone]*zoneState
-	fault   path.Zone // currently attributed outage zone, "" = none
+	hopMode map[string]*hopProbe // individually watched hops by address
+	fault   path.Zone            // currently attributed outage zone, "" = none
 	pending []LiveSample
+
+	ctx context.Context
+	wg  *sync.WaitGroup
+}
+
+type hopProbe struct {
+	ttl    int
+	direct bool // answers echo itself; otherwise TTL-limited towards target
 }
 
 type result struct {
-	zone path.Zone
+	zone string // zone or HopKey(addr)
 	at   time.Time
 	rtt  time.Duration // <0 = loss
 }
@@ -215,7 +300,7 @@ type zoneState struct {
 
 func newRunner(m *Monitor, sid int64, dst netip.Addr, hops []path.Hop, reps []path.Representative) *runner {
 	r := &runner{m: m, sid: sid, dst: dst, hops: hops, reps: reps,
-		results: make(chan result, 64), zones: map[path.Zone]*zoneState{}}
+		results: make(chan result, 256), zones: map[path.Zone]*zoneState{}, hopMode: map[string]*hopProbe{}}
 	for _, z := range path.Zones {
 		r.zones[z] = &zoneState{}
 	}
@@ -233,6 +318,8 @@ func (r *runner) loop(ctx context.Context) error {
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
+	r.ctx, r.wg = ctx, &wg
+	r.syncWatched()
 
 	r.fire(ctx, &wg)
 	for {
@@ -250,7 +337,7 @@ func (r *runner) loop(ctx context.Context) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if hops, err := path.Discover(ctx, r.m.prober, r.dst); err == nil && len(hops) > 0 {
+				if hops, err := path.Discover(ctx, r.m.prober, r.dst, nil); err == nil && len(hops) > 0 {
 					select {
 					case pathUpdates <- hops:
 					default:
@@ -259,6 +346,8 @@ func (r *runner) loop(ctx context.Context) error {
 			}()
 		case hops := <-pathUpdates:
 			r.updatePath(ctx, hops)
+		case f := <-r.m.cmds:
+			f(r)
 		}
 	}
 }
@@ -266,36 +355,118 @@ func (r *runner) loop(ctx context.Context) error {
 // fire sends one probe per representative without blocking the loop.
 func (r *runner) fire(ctx context.Context, wg *sync.WaitGroup) {
 	for _, rep := range r.reps {
-		wg.Add(1)
-		go func(rep path.Representative) {
-			defer wg.Done()
-			req := probe.Request{Dst: rep.Addr, Timeout: probeTimeout}
-			want := probe.EchoReply
-			if !rep.Direct {
-				req = probe.Request{Dst: r.dst, TTL: rep.TTL, Timeout: probeTimeout}
-				want = probe.TimeExceeded
-			}
-			res, err := r.m.prober.Probe(ctx, req)
-			if ctx.Err() != nil {
-				return
-			}
-			out := result{zone: rep.Zone, at: res.Sent, rtt: -1}
-			if out.at.IsZero() {
-				out.at = time.Now()
-			}
-			if err == nil && res.Kind == want {
-				out.rtt = res.RTT
-			}
-			select {
-			case r.results <- out:
-			case <-ctx.Done():
-			}
-		}(rep)
+		r.probeOne(ctx, wg, string(rep.Zone), rep.Addr, rep.TTL, rep.Direct)
+	}
+	for addr, h := range r.hopMode {
+		a, err := netip.ParseAddr(addr)
+		if err != nil {
+			continue
+		}
+		r.probeOne(ctx, wg, HopKey(addr), a, h.ttl, h.direct)
 	}
 }
 
+func (r *runner) probeOne(ctx context.Context, wg *sync.WaitGroup, key string, addr netip.Addr, ttl int, direct bool) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		req := probe.Request{Dst: addr, Timeout: probeTimeout}
+		want := probe.EchoReply
+		if !direct {
+			req = probe.Request{Dst: r.dst, TTL: ttl, Timeout: probeTimeout}
+			want = probe.TimeExceeded
+		}
+		res, err := r.m.prober.Probe(ctx, req)
+		if ctx.Err() != nil {
+			return
+		}
+		out := result{zone: key, at: res.Sent, rtt: -1}
+		if out.at.IsZero() {
+			out.at = time.Now()
+		}
+		if err == nil && res.Kind == want {
+			out.rtt = res.RTT
+		}
+		select {
+		case r.results <- out:
+		case <-ctx.Done():
+		}
+	}()
+}
+
+// syncWatched aligns the individually probed hops with the watch list and
+// the current path. New hops start TTL-limited and switch to direct echo
+// once they are known to answer it.
+func (r *runner) syncWatched() {
+	r.m.mu.Lock()
+	watched := make(map[string]bool, len(r.m.watched))
+	for a := range r.m.watched {
+		watched[a] = true
+	}
+	r.m.mu.Unlock()
+
+	ttls := map[string]int{}
+	for _, h := range r.hops {
+		if h.Responsive && h.Addr != r.dst.String() {
+			if _, ok := ttls[h.Addr]; !ok {
+				ttls[h.Addr] = h.TTL
+			}
+		}
+	}
+	for addr := range r.hopMode {
+		if _, ok := ttls[addr]; !ok || !watched[addr] {
+			delete(r.hopMode, addr)
+		}
+	}
+	for addr := range watched {
+		ttl, ok := ttls[addr]
+		if !ok {
+			continue
+		}
+		if h, ok := r.hopMode[addr]; ok {
+			h.ttl = ttl
+			continue
+		}
+		r.hopMode[addr] = &hopProbe{ttl: ttl}
+		a, _ := netip.ParseAddr(addr)
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			if path.AnswersEcho(r.ctx, r.m.prober, a) {
+				r.m.send(func(r *runner) {
+					if h, ok := r.hopMode[addr]; ok {
+						h.direct = true
+					}
+				})
+			}
+		}()
+	}
+}
+
+// reclassify applies changed zone overrides to the current path.
+func (r *runner) reclassify(ov map[string]path.Zone) {
+	path.Classify(r.hops, ov)
+	r.reps = path.Representatives(r.ctx, r.m.prober, r.hops, r.dst)
+	for _, z := range path.Zones {
+		r.zones[z].streak = 0
+	}
+	r.closeFault(time.Now())
+	r.m.store.SavePath(r.sid, time.Now(), r.hops)
+	hops := append([]path.Hop(nil), r.hops...)
+	r.m.setStatus(func(s *Status) { s.Hops, s.Reps = hops, r.reps })
+}
+
 func (r *runner) handle(res result) {
-	z := r.zones[res.zone]
+	ms := -1.0
+	if res.rtt >= 0 {
+		ms = float64(res.rtt) / float64(time.Millisecond)
+	}
+	r.m.store.AddSample(store.Sample{SessionID: r.sid, Zone: res.zone, At: res.at, RTT: res.rtt})
+	r.pending = append(r.pending, LiveSample{Zone: res.zone, T: res.at.UnixMilli(), RTTMs: ms})
+	if strings.HasPrefix(res.zone, "hop:") {
+		return
+	}
+	z := r.zones[path.Zone(res.zone)]
 	z.rtts = append(z.rtts, res.rtt)
 	if res.rtt < 0 {
 		if z.streak == 0 {
@@ -305,12 +476,6 @@ func (r *runner) handle(res result) {
 	} else {
 		z.streak = 0
 	}
-	r.m.store.AddSample(store.Sample{SessionID: r.sid, Zone: string(res.zone), At: res.at, RTT: res.rtt})
-	ms := -1.0
-	if res.rtt >= 0 {
-		ms = float64(res.rtt) / float64(time.Millisecond)
-	}
-	r.pending = append(r.pending, LiveSample{Zone: res.zone, T: res.at.UnixMilli(), RTTMs: ms})
 	r.evaluate(res.at)
 }
 
@@ -374,8 +539,10 @@ func (r *runner) updatePath(ctx context.Context, hops []path.Hop) {
 	if samePath(r.hops, hops) {
 		return
 	}
+	path.Classify(hops, r.m.overrides())
 	r.hops = hops
 	r.reps = path.Representatives(ctx, r.m.prober, hops, r.dst)
+	r.syncWatched()
 	r.m.store.SavePath(r.sid, time.Now(), hops)
 	r.m.setStatus(func(s *Status) { s.Hops, s.Reps = hops, r.reps })
 	r.m.emit(EvPath, hops)

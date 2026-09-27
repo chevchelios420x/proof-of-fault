@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/metrics"
@@ -120,6 +121,26 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 		zr.Summary = metrics.Summarize(rtts)
 		zr.Peaks = peaks
 		rep.Zones = append(rep.Zones, zr)
+		series = append(series, ser)
+	}
+	// Individually watched hops: chart lines only, not part of the zone stats.
+	var hopKeys []string
+	for k := range byZone {
+		if strings.HasPrefix(string(k), "hop:") {
+			hopKeys = append(hopKeys, string(k))
+		}
+	}
+	sort.Strings(hopKeys)
+	for _, k := range hopKeys {
+		ss := byZone[path.Zone(k)]
+		ser := Series{Zone: path.Zone(k), T: make([]int64, len(ss)), RTTMs: make([]float64, len(ss))}
+		for i, s := range ss {
+			ser.T[i] = s.At.UnixMilli()
+			ser.RTTMs[i] = -1
+			if s.RTT >= 0 {
+				ser.RTTMs[i] = float64(s.RTT) / float64(time.Millisecond)
+			}
+		}
 		series = append(series, ser)
 	}
 	rep.Verdict = verdict(rep)

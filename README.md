@@ -18,12 +18,18 @@ Status: **Windows** (IPv4). Linux/macOS folgen (siehe `internal/probe`).
 
 ## Benutzung (Windows)
 
+Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault.exe`](build/bin/proof-of-fault.exe).
+
 1. `proof-of-fault.exe` starten. Es sind keine Admin-Rechte und keine Installation
    nötig; die WebView2-Runtime ist bei Windows 10/11 vorhanden.
 2. Ziel eingeben (z. B. `1.1.1.1`) → **Überwachung starten**.
-3. Laufen lassen, bis die Störung auftritt. Messdaten landen in
+3. In der Route-Tabelle kann jeder Hop per Häkchen als eigene Linie in den
+   Latenzverlauf aufgenommen werden. Die Zone jedes Hops lässt sich per Auswahlfeld
+   korrigieren (z. B. ein privates `10.x`-Transfernetz des Providers → `ISP_EDGE`).
+   Die Zonenwahl wird pro Hop-Adresse dauerhaft gespeichert.
+4. Laufen lassen, bis die Störung auftritt. Messdaten landen in
    `%AppData%\proof-of-fault\data.db`.
-4. **Verlauf & Berichte** → Sitzung wählen → **Bericht (HTML/PDF)** oder
+5. **Verlauf & Berichte** → Sitzung wählen → **Bericht (HTML/PDF)** oder
    **Rohdaten (CSV)**. Den HTML-Bericht im Browser öffnen und mit „Drucken → Als PDF
    speichern“ in eine PDF umwandeln.
 

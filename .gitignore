@@ -1,4 +1,5 @@
-build/bin/
+build/bin/*
+!build/bin/proof-of-fault.exe
 frontend/dist/
 frontend/node_modules/
 frontend/wailsjs/
