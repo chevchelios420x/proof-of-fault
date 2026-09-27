@@ -131,6 +131,9 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
 	}
+	// Migrations for databases of older versions (errors = column exists).
+	db.Exec(`ALTER TABLE custom_point ADD COLUMN tcp INTEGER NOT NULL DEFAULT 0`)
+	db.Exec(`ALTER TABLE custom_point ADD COLUMN port INTEGER NOT NULL DEFAULT 443`)
 	s := &Store{db: db, stop: make(chan struct{}), done: make(chan struct{})}
 	go s.flushLoop()
 	return s, nil
@@ -491,11 +494,13 @@ type CustomPoint struct {
 	Name    string `json:"name"`
 	Zone    string `json:"zone"`
 	Enabled bool   `json:"enabled"`
+	TCP     bool   `json:"tcp"`  // additionally check a TCP connect every second
+	Port    int    `json:"port"` // TCP port (default 443)
 }
 
 // CustomPoints returns all user-defined measuring points.
 func (s *Store) CustomPoints() ([]CustomPoint, error) {
-	rows, err := s.db.Query(`SELECT host, name, zone, enabled FROM custom_point ORDER BY rowid`)
+	rows, err := s.db.Query(`SELECT host, name, zone, enabled, tcp, port FROM custom_point ORDER BY rowid`)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +508,7 @@ func (s *Store) CustomPoints() ([]CustomPoint, error) {
 	var out []CustomPoint
 	for rows.Next() {
 		var p CustomPoint
-		if err := rows.Scan(&p.Host, &p.Name, &p.Zone, &p.Enabled); err != nil {
+		if err := rows.Scan(&p.Host, &p.Name, &p.Zone, &p.Enabled, &p.TCP, &p.Port); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -513,9 +518,12 @@ func (s *Store) CustomPoints() ([]CustomPoint, error) {
 
 // SaveCustomPoint inserts or updates a measuring point.
 func (s *Store) SaveCustomPoint(p CustomPoint) error {
-	_, err := s.db.Exec(`INSERT INTO custom_point(host, name, zone, enabled) VALUES(?,?,?,?)
-		ON CONFLICT(host) DO UPDATE SET name=excluded.name, zone=excluded.zone, enabled=excluded.enabled`,
-		p.Host, p.Name, p.Zone, p.Enabled)
+	if p.Port <= 0 || p.Port > 65535 {
+		p.Port = 443
+	}
+	_, err := s.db.Exec(`INSERT INTO custom_point(host, name, zone, enabled, tcp, port) VALUES(?,?,?,?,?,?)
+		ON CONFLICT(host) DO UPDATE SET name=excluded.name, zone=excluded.zone, enabled=excluded.enabled, tcp=excluded.tcp, port=excluded.port`,
+		p.Host, p.Name, p.Zone, p.Enabled, p.TCP, p.Port)
 	return err
 }
 

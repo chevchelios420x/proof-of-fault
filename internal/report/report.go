@@ -139,7 +139,7 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 	// Individually watched hops: chart lines only, not part of the zone stats.
 	var hopKeys []string
 	for k := range byZone {
-		if strings.HasPrefix(string(k), "hop:") || strings.HasPrefix(string(k), "dev:") {
+		if strings.HasPrefix(string(k), "hop:") || strings.HasPrefix(string(k), "dev:") || strings.HasPrefix(string(k), "tcp:") {
 			hopKeys = append(hopKeys, string(k))
 		}
 	}

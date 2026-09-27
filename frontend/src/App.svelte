@@ -81,19 +81,19 @@
   $: liveSeries = buildSeries({ hops: status.hops || [], reps: status.reps || [], watched, names, custom })
 
   // User-defined measuring points (e.g. other devices in the LAN).
-  let newHost = '', newName = '', newZone = ''
+  let newHost = '', newName = '', newZone = '', newTcp = false, newPort = 443
   let customBusy = false
   async function addCustom() {
     customBusy = true
     try {
-      await SaveCustomPoint(newHost.trim(), newName.trim(), newZone, true)
-      newHost = ''; newName = ''; newZone = ''
+      await SaveCustomPoint(newHost.trim(), newName.trim(), newZone, true, newTcp, Number(newPort) || 443)
+      newHost = ''; newName = ''; newZone = ''; newTcp = false; newPort = 443
     } catch (e) { error = String(e) }
     customBusy = false
   }
   async function saveCustom(c, patch) {
     const x = { ...c, ...patch }
-    try { await SaveCustomPoint(x.host, x.name, x.zone, x.enabled) } catch (e) { error = String(e) }
+    try { await SaveCustomPoint(x.host, x.name, x.zone, x.enabled, !!x.tcp, Number(x.port) || 443) } catch (e) { error = String(e) }
   }
   async function removeCustom(c) {
     try { await DeleteCustomPoint(c.host) } catch (e) { error = String(e) }
@@ -359,7 +359,7 @@
           <h2 class="sub">Weitere Messpunkte (manuell)<Help align="left" text={HELP.custom} /></h2>
           <p class="muted small">Beliebige Geräte oder Adressen zusätzlich jede Sekunde anpingen, z. B. ein zweiter Router/Modem, Repeater, NAS oder ein anderer Server. Werden dauerhaft gespeichert und bei jeder Messung mitgemessen.</p>
           <table class="route">
-            <tr><th>Adresse / Host<Help align="left" text={HELP.customAuto} /></th><th>Name<Help text={HELP.name} /></th><th>Zone<Help text={HELP.customZone} /></th><th></th><th>Diagramm<Help align="right" text={HELP.diagram} /></th></tr>
+            <tr><th>Adresse / Host<Help align="left" text={HELP.customAuto} /></th><th>Name<Help text={HELP.name} /></th><th>Zone<Help text={HELP.customZone} /></th><th>TCP-Check<Help text={HELP.tcp} /></th><th></th><th>Diagramm<Help align="right" text={HELP.diagram} /></th></tr>
             {#each custom as c, i (c.host)}
               <tr>
                 <td>{c.host}{#if c.ip && c.ip !== c.host}<br /><small class="muted">{c.ip}</small>{/if}{#if c.error}<br /><small class="bad">{c.error}</small>{/if}</td>
@@ -369,6 +369,13 @@
                   <select style="color:{zoneColor(c.zone)}" value={c.zone} on:change={(e) => saveCustom(c, { zone: e.target.value })}>
                     {#each zoneDefs as z}<option value={z.id}>{z.name}</option>{/each}
                   </select>
+                </td>
+                <td class="tcp">
+                  <input type="checkbox" checked={c.tcp} on:change={(e) => saveCustom(c, { tcp: e.target.checked })} title="Zusätzlich TCP-Verbindungsaufbau prüfen" />
+                  {#if c.tcp}
+                    <input class="port" type="number" min="1" max="65535" value={c.port || 443} on:change={(e) => saveCustom(c, { port: e.target.value })} title="Port" />
+                    <span class="dot" style="background:{colors['tcp:' + c.host]}"></span>
+                  {/if}
                 </td>
                 <td><button class="del" title="Messpunkt entfernen" on:click={() => removeCustom(c)}>✕</button></td>
                 <td>
@@ -387,6 +394,10 @@
                   <option value="">Auto</option>
                   {#each zoneDefs as z}<option value={z.id}>{z.name}</option>{/each}
                 </select>
+              </td>
+              <td class="tcp">
+                <input type="checkbox" bind:checked={newTcp} title="Zusätzlich TCP-Verbindungsaufbau prüfen" />
+                {#if newTcp}<input class="port" type="number" min="1" max="65535" bind:value={newPort} title="Port" />{/if}
               </td>
               <td colspan="2"><button class="primary" disabled={!newHost.trim() || customBusy} on:click={addCustom}>Hinzufügen</button></td>
             </tr>
@@ -491,6 +502,8 @@
   .route .name { width: 130px; padding: 2px 6px; font-size: 12px; }
   .sub { margin-top: 18px; }
   .del { padding: 1px 8px; font-size: 12px; }
+  td.tcp { white-space: nowrap; }
+  .port { width: 70px; padding: 2px 6px; font-size: 12px; margin-left: 4px; }
   .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .small { font-size: 12px; margin: 6px 0 0; }

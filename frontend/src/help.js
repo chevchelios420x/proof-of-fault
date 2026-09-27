@@ -24,6 +24,7 @@ export const HELP = {
   diagram: 'Zeigt den Hop als eigene Linie im Diagramm. Bei Zonen-Messpunkten wird nur ein-/ausgeblendet; andere Hops werden nur gemessen, solange das Häkchen gesetzt ist.',
   custom: 'Zusätzliche Geräte oder Server, die jede Sekunde angepingt werden – z. B. ein zweiter Router, NAS oder Ausweichziele wie 1.1.1.1 oder ein eigener VPS.',
   customZone: 'Bestimmt, wie der Messpunkt in die Auswertung eingeht:\nLAN / ISP_EDGE: zählt zu diesem Bereich – fällt er zusammen mit allen Zielen aus, wird die Störung diesem Bereich zugeordnet.\nWAN: Ausweichziel – ist nur das Hauptziel weg, dieses aber erreichbar, liegt es am Ziel.\nkeine: wird nur gemessen und angezeigt, aber nicht gewertet.',
+  tcp: 'Prüft zusätzlich jede Sekunde, ob ein TCP-Verbindungsaufbau zum angegebenen Port gelingt (Standard 443 = HTTPS), und misst dessen Dauer (≈ eine Round-Trip-Zeit). Das entspricht echtem Web-Traffic – sinnvoll, weil viele Anbieter/Server Pings nur nachrangig behandeln oder drosseln. Erscheint als eigene, gepunktete Linie im Diagramm und als eigene Zeile in der Störungs-Matrix; zählt in derselben Zone wie der Messpunkt. Eine abgelehnte Verbindung (Port zu) gilt als erreichbar.',
   customAuto: 'Auto: private Adressen (z. B. 192.168.x.x) → LAN, alle anderen → WAN.',
   sessions: 'Alle gespeicherten Messungen. Laufende Messungen erscheinen hier ebenfalls.',
   exportHtml: 'Vollständiger Bericht mit Diagnose, Kennzahlen, Störungs-Matrix, Ereignisprotokoll und Route. Im Browser öffnen und über „Drucken → Als PDF speichern“ als PDF weitergeben.',

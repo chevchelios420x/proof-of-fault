@@ -58,6 +58,15 @@ func HopKey(addr string) string { return "hop:" + addr }
 // DevKey is the series key of a user-defined measuring point.
 func DevKey(host string) string { return "dev:" + host }
 
+// TCPKey is the series key of the TCP check of a user-defined point.
+func TCPKey(host string) string { return "tcp:" + host }
+
+// isExtraKey reports whether a series key belongs to a user-defined point
+// (ICMP or TCP) or a watched hop, i.e. not to a zone measuring point.
+func isExtraKey(k string) bool {
+	return strings.HasPrefix(k, "hop:") || strings.HasPrefix(k, "dev:") || strings.HasPrefix(k, "tcp:")
+}
+
 // CustomStatus is a user-defined measuring point as shown in the UI.
 type CustomStatus struct {
 	store.CustomPoint
@@ -543,14 +552,40 @@ func (r *runner) fire(ctx context.Context, wg *sync.WaitGroup) {
 		r.probeOne(ctx, wg, t.seq, HopKey(addr), a, h.ttl, h.direct)
 	}
 	for _, c := range r.custom {
+		if c.port > 0 {
+			r.probeTCP(ctx, wg, t.seq, c.s.key, c.addr, c.port)
+			continue
+		}
 		r.probeOne(ctx, wg, t.seq, c.s.key, c.addr, 0, true)
 	}
+}
+
+// probeTCP measures a TCP handshake without blocking the loop.
+func (r *runner) probeTCP(ctx context.Context, wg *sync.WaitGroup, seq int, key string, addr netip.Addr, port int) {
+	timeout := r.cfg.ProbeTimeout()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		res := probe.TCPConnect(ctx, addr, port, timeout)
+		if ctx.Err() != nil {
+			return
+		}
+		out := result{seq: seq, zone: key, at: res.Sent, rtt: -1}
+		if res.Kind == probe.EchoReply {
+			out.rtt = res.RTT
+		}
+		select {
+		case r.results <- out:
+		case <-ctx.Done():
+		}
+	}()
 }
 
 // customPoint is an enabled, resolved user-defined measuring point.
 type customPoint struct {
 	s    series
 	addr netip.Addr
+	port int // > 0: TCP connect check instead of ping
 }
 
 func (r *runner) setCustom(cs []CustomStatus) {
@@ -573,6 +608,15 @@ func (r *runner) setCustom(cs []CustomStatus) {
 		}
 		r.custom = append(r.custom, customPoint{addr: a,
 			s: series{key: DevKey(c.Host), zone: path.Zone(role), group: c.Zone, addr: c.IP, label: "Gerät " + label}})
+		if c.TCP {
+			port := c.Port
+			if port <= 0 {
+				port = 443
+			}
+			r.custom = append(r.custom, customPoint{addr: a, port: port,
+				s: series{key: TCPKey(c.Host), zone: path.Zone(role), group: c.Zone, addr: c.IP,
+					label: fmt.Sprintf("Gerät %s TCP:%d", label, port)}})
+		}
 	}
 }
 
@@ -700,7 +744,7 @@ func (r *runner) handle(res result) {
 		t.result[res.zone] = res.rtt
 		r.drainTicks(false)
 	}
-	if strings.HasPrefix(res.zone, "hop:") || strings.HasPrefix(res.zone, "dev:") {
+	if isExtraKey(res.zone) {
 		return
 	}
 	z := r.zones[path.Zone(res.zone)]

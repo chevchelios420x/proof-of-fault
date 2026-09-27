@@ -185,7 +185,7 @@ func buildIncident(b *incBuf) store.Incident {
 			}
 		}
 	}
-	isCustom := func(s series) bool { return strings.HasPrefix(s.key, "dev:") }
+	isCustom := func(s series) bool { return strings.HasPrefix(s.key, "dev:") || strings.HasPrefix(s.key, "tcp:") }
 	sort.SliceStable(rows, func(i, j int) bool {
 		ci, cj := isCustom(rows[i]), isCustom(rows[j])
 		if ci != cj {

@@ -111,7 +111,7 @@
           label: s.label,
           stroke: s.color,
           width: s.dash ? 1.4 : 1.6,
-          dash: s.dash ? [6, 3] : undefined,
+          dash: s.dot ? [2, 3] : s.dash ? [6, 3] : undefined,
           show: !hidden.has(s.key),
           spanGaps: false,
         })),
@@ -225,7 +225,7 @@
       <div class="gname" style="border-bottom-color:{grp.zone.color}">{grp.zone.name}</div>
       {#each grp.items as s}
         <button class="item" class:off={hidden.has(s.key)} on:click={() => toggle(s.key)} title="Klicken zum Ein-/Ausblenden">
-          <svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke={s.color} stroke-width="3" stroke-dasharray={s.dash ? '6 3' : ''} /></svg>
+          <svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke={s.color} stroke-width="3" stroke-dasharray={s.dot ? '2 3' : s.dash ? '6 3' : ''} /></svg>
           <span class="lbl">{s.label}</span>
           <span class="val" class:lost={cursorVals[s.key] === null}>{cursorT ? fmtV(cursorVals[s.key]) : ''}</span>
         </button>
@@ -237,7 +237,7 @@
 <p class="hint">
   {#if live && paused}<b class="paused">⏸ Angehalten, solange die Maus über dem Diagramm ist.</b>{/if}
   Ziehen = Zoom, Doppelklick = zurücksetzen. Farbige Flächen = Störungen (rot: Anbieter/Internet, blau: nur Ziel/Ausweichziel, grün: Heimnetz/Einzelgerät).
-  Rote Striche oben = Paketverlust, je sichtbarer Linie eine Spur (Farbmarke links). Gestrichelt = manuelle Messpunkte.
+  Rote Striche oben = Paketverlust, je sichtbarer Linie eine Spur (Farbmarke links). Gestrichelt = manuelle Messpunkte (Ping), gepunktet = TCP-Check.
 </p>
 
 <style>

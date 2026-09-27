@@ -140,11 +140,11 @@ func (a *App) SetHopName(addr, name string) error {
 
 // SaveCustomPoint adds or updates a user-defined measuring point
 // (IP or host name, optional name, zone "" = automatic).
-func (a *App) SaveCustomPoint(host, name, zone string, enabled bool) error {
+func (a *App) SaveCustomPoint(host, name, zone string, enabled, tcp bool, port int) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
-	return a.monitor.SaveCustomPoint(store.CustomPoint{Host: host, Name: name, Zone: zone, Enabled: enabled})
+	return a.monitor.SaveCustomPoint(store.CustomPoint{Host: host, Name: name, Zone: zone, Enabled: enabled, TCP: tcp, Port: port})
 }
 
 // DeleteCustomPoint removes a user-defined measuring point.

@@ -6,6 +6,17 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.12.0 – 2026-09-27
+
+- **TCP-Check für manuelle Messpunkte** (Spalte „TCP-Check“, Port wählbar,
+  Standard 443): zusätzlich zum Ping wird jede Sekunde ein TCP-Verbindungsaufbau
+  gemessen (Dauer ≈ eine Round-Trip-Zeit, Verbindung wird sofort geschlossen;
+  ohne Admin-Rechte). Abgelehnte Verbindung (Port geschlossen) zählt als
+  erreichbar. Eigene gepunktete Linie im Live-Diagramm und im Verlauf, eigene
+  Zeile in der Störungs-Matrix, zählt in der Zone des Messpunkts (z. B. als
+  Ausweichziel in WAN). Sinnvoll, weil viele Anbieter/Server Pings drosseln
+  oder nachrangig behandeln – TCP entspricht echtem Web-Traffic.
+
 ## v0.11.0 – 2026-09-27
 
 - **Störungs-Matrix nach Zonen gruppiert** (App und HTML-Bericht): Hops und
