@@ -6,6 +6,18 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.2.1 – 2026-09-27
+
+- Live-Latenzverlauf bleibt stehen, solange die Maus über dem Diagramm ist
+  (Hinweis „Angehalten“); ein per Ziehen gesetzter Zoom bleibt bei neuen Daten
+  erhalten (Doppelklick setzt zurück).
+- Über die Legende ausgeblendete Linien bleiben ausgeblendet, wenn weitere Hops
+  per Checkbox hinzukommen; ihre Verlust-Spur wird ebenfalls ausgeblendet.
+- Hops, die bereits als Zonen-Messpunkt dienen (z. B. Heimrouter als LAN), zeigen
+  in der Route-Tabelle eine aktive, gesperrte Checkbox in Zonenfarbe und werden
+  nicht doppelt gemessen.
+- Legende zeigt „–“ statt „Verlust“, wenn die Maus nicht über dem Diagramm ist.
+
 ## v0.2.0 – 2026-09-27
 
 - Jeder antwortende Hop aus dem Traceroute kann per Häkchen als eigene Linie in

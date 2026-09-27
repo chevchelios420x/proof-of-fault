@@ -8,3 +8,4 @@
      `build/bin/proof-of-fault-vX.Y.Z.exe` committen (alte EXE per `git rm` entfernen).
   4. Link in `README.md` auf die neue EXE aktualisieren.
 - Vor dem Push: `go vet ./...` und `go test ./internal/...`.
+- Keine Git-Tags anlegen.

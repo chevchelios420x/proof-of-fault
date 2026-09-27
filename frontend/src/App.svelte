@@ -30,7 +30,9 @@
   $: running = ['resolving', 'discovering', 'running'].includes(status.state)
   $: watched = status.watched || []
   $: liveZones = (status.reps || []).map((r) => r.zone)
-  $: liveKeys = [...liveZones, ...(status.hops || []).filter((h) => h.responsive && watched.includes(h.addr)).map((h) => hopKey(h.addr))]
+  // Hops that are measured as zone representative already appear as zone line.
+  $: repZoneByAddr = Object.fromEntries((status.reps || []).map((r) => [r.ip, r.zone]))
+  $: liveKeys = [...liveZones, ...(status.hops || []).filter((h) => h.responsive && !repZoneByAddr[h.addr] && watched.includes(h.addr)).map((h) => hopKey(h.addr))]
 
   function loadWatched() {
     try { return JSON.parse(localStorage.getItem('watchedHops') || '[]') } catch { return [] }
@@ -174,7 +176,7 @@
 
       <section class="card">
         <h2>Latenzverlauf (live)</h2>
-        <Chart timeline={live} zones={liveKeys} hops={status.hops || []} version={liveVersion} />
+        <Chart live timeline={live} zones={liveKeys} hops={status.hops || []} version={liveVersion} />
       </section>
 
       <div class="two">
@@ -209,7 +211,12 @@
                 </td>
                 <td>{h.responsive ? fmt(h.rttMs) + ' ms' : ''}</td>
                 <td>
-                  {#if h.responsive && h.addr !== status.targetIp}
+                  {#if repZoneByAddr[h.addr]}
+                    <label class="toggle" title="Wird bereits als Zone {repZoneByAddr[h.addr]} gemessen und angezeigt (Ein-/Ausblenden über die Legende).">
+                      <input type="checkbox" checked disabled />
+                      <span class="dot" style="background:{ZONE_COLOR[repZoneByAddr[h.addr]]}"></span>
+                    </label>
+                  {:else if h.responsive}
                     <label class="toggle">
                       <input type="checkbox" checked={watched.includes(h.addr)} on:change={(e) => toggleHop(h.addr, e.target.checked)} />
                       <span class="dot" style="background:{seriesColor(hopKey(h.addr))}"></span>

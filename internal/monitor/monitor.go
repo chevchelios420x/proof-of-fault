@@ -357,10 +357,14 @@ func (r *runner) fire(ctx context.Context, wg *sync.WaitGroup) {
 	for _, rep := range r.reps {
 		r.probeOne(ctx, wg, string(rep.Zone), rep.Addr, rep.TTL, rep.Direct)
 	}
+	isRep := map[netip.Addr]bool{}
+	for _, rep := range r.reps {
+		isRep[rep.Addr] = true
+	}
 	for addr, h := range r.hopMode {
 		a, err := netip.ParseAddr(addr)
-		if err != nil {
-			continue
+		if err != nil || isRep[a] {
+			continue // zone representatives are measured already
 		}
 		r.probeOne(ctx, wg, HopKey(addr), a, h.ttl, h.direct)
 	}
