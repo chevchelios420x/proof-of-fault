@@ -541,9 +541,10 @@ type IncidentSeries struct {
 	Zone   string    `json:"zone"`
 	Custom bool      `json:"custom"` // user-defined measuring point
 	Target bool      `json:"target"` // main target
-	States string    `json:"states"` // per second: '.' ok, 's' slow, 'x' no answer, '-' not probed
+	States string    `json:"states"` // per second: '.' ok, 's' slow, 'x' no answer, 'p' maybe false positive, '-' not probed
 	RTT    []float64 `json:"rtt"`    // per second in ms, -1 = no answer / not probed
 	Lost   int       `json:"lost"`   // lost seconds within the problem period
+	Maybe  int       `json:"maybe"`  // seconds "maybe false positive" (other protocol answered)
 }
 
 // Incident is one disruption with the state of every measuring point per

@@ -62,6 +62,35 @@ func (r *runner) customStates(t *tick, st map[string]byte) {
 		}
 		b.add(rtt)
 	}
+	// Ping and TCP check of the same host disagree: the host is reachable,
+	// the failed protocol is probably filtered → "maybe false positive" ('p'),
+	// which counts as reachable and neither starts nor extends an incident.
+	for _, c := range t.custom {
+		if st[c.key] != 'x' {
+			continue
+		}
+		if other, ok := st[counterpart(c.key)]; ok && other != 'x' && other != 'p' {
+			st[c.key] = 'p'
+		}
+	}
+}
+
+// counterpart returns the key of the other protocol of the same host
+// ("dev:" ↔ "tcp:"), or "" for other keys.
+func counterpart(key string) string {
+	switch {
+	case strings.HasPrefix(key, "dev:"):
+		return "tcp:" + key[4:]
+	case strings.HasPrefix(key, "tcp:"):
+		return "dev:" + key[4:]
+	}
+	return ""
+}
+
+// otherProtocolAnswered reports whether the counterpart of key answered in t.
+func otherProtocolAnswered(t *tick, key string) bool {
+	rtt, ok := t.result[counterpart(key)]
+	return ok && rtt >= 0
 }
 
 // ZoneNone marks user-defined measuring points that are shown and recorded
@@ -230,8 +259,13 @@ func buildIncident(b *incBuf) store.Incident {
 				rtt = float64(d.Microseconds()) / 1000
 			}
 			row.RTT = append(row.RTT, rtt)
-			if st == 'x' && i >= b.pre && i <= b.lastProblem {
-				row.Lost++
+			if i >= b.pre && i <= b.lastProblem {
+				switch st {
+				case 'x':
+					row.Lost++
+				case 'p':
+					row.Maybe++
+				}
 			}
 		}
 		row.States = string(states)

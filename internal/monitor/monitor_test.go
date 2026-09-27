@@ -188,3 +188,39 @@ func TestCustomZones(t *testing.T) {
 		}
 	}
 }
+
+func TestPingTCPDisagreement(t *testing.T) {
+	order := []series{
+		{key: "LAN", ttl: 1, zone: path.LAN},
+		{key: "WAN", ttl: targetTTL, zone: path.WAN},
+	}
+	ping := series{key: DevKey("1.1.1.1"), zone: path.WAN, label: "CF"}
+	tcp := series{key: TCPKey("1.1.1.1"), zone: path.WAN, label: "CF TCP"}
+	r := newTestRunner(t)
+	ms := time.Millisecond
+	for seq := 1; seq <= 30; seq++ {
+		wan := 20 * ms
+		if seq >= 15 && seq < 19 {
+			wan = -1 // real target outage in between
+		}
+		r.seq = seq
+		r.finishTick(&tick{seq: seq, at: time.Now(), order: order, custom: []series{ping, tcp},
+			result: map[string]time.Duration{"LAN": ms, "WAN": wan, ping.key: -1, tcp.key: 15 * ms}})
+	}
+	r.closeIncident()
+	ins, _ := r.m.store.Incidents(r.sid)
+	if len(ins) != 1 || ins[0].Class != ClassTarget || ins[0].Seconds != 4 {
+		t.Fatalf("ping-only loss must not hold incidents open: %+v", ins)
+	}
+	for _, s := range ins[0].Series {
+		if s.Key == ping.key && (s.Lost != 0 || s.Maybe != 4) {
+			t.Fatalf("ping row should be 'maybe false positive': %+v", s)
+		}
+	}
+	evs, _ := r.m.store.Events(r.sid)
+	for _, e := range evs {
+		if e.Kind == KindLossDevice {
+			t.Fatalf("no device loss event expected: %+v", e)
+		}
+	}
+}

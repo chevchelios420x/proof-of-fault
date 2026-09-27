@@ -8,8 +8,8 @@
     lan: 'Heimnetz', isp: 'Anbieter-Zugang', isp_core: 'Anbieter-Netz/Internet',
     target: 'nur Hauptziel', alt: 'nur Ausweichziel', device: 'nur Einzel-Messpunkt',
   }
-  const STATE = { '.': 'antwortet', s: 'langsam', x: 'keine Antwort', '-': 'nicht gemessen' }
-  const CELL = { '.': 'ok', s: 'slow', x: 'lost', '-': 'none' }
+  const STATE = { '.': 'antwortet', s: 'langsam', x: 'keine Antwort', p: 'keine Antwort, aber das andere Protokoll (Ping/TCP) kam durch – möglicher Fehlalarm, zählt als erreichbar', '-': 'nicht gemessen' }
+  const CELL = { '.': 'ok', s: 'slow', x: 'lost', p: 'maybe', '-': 'none' }
   const t = (ms) => new Date(ms).toLocaleTimeString('de-DE')
   const dt = (ms) => new Date(ms).toLocaleString('de-DE')
 
@@ -35,6 +35,7 @@
   </select>
   <span class="legend">
     <i class="cell ok"></i> antwortet <i class="cell slow"></i> langsam <i class="cell lost"></i> keine Antwort
+    <i class="cell maybe"></i> möglicher Fehlalarm
     <i class="cell none"></i> nicht gemessen · blasse Spalten = 10 s davor / 5 s danach
   </span>
 </div>
@@ -60,7 +61,7 @@
           <tr><td class="grp" style="border-left-color:{grp.zone.color}">{grp.zone.name}</td><td colspan={inc.columns.length}></td></tr>
           {#each grp.items as s}
             <tr>
-              <td class="lbl" class:target={s.target} class:custom={s.custom}>{s.label}{#if s.lost} <span class="lostn">{s.lost} s weg</span>{/if}</td>
+              <td class="lbl" class:target={s.target} class:custom={s.custom}>{s.label}{#if s.lost} <span class="lostn">{s.lost} s weg</span>{/if}{#if s.maybe} <span class="mayben" title="Ping weg, TCP ok (oder umgekehrt): vermutlich wird nur dieses Protokoll gefiltert. Zählt als erreichbar.">{s.maybe} s Fehlalarm?</span>{/if}</td>
               {#each s.states.split('') as st, i}
                 <td class="cell {CELL[st]}" class:pre={i < inc.preRoll || i >= inc.columns.length - inc.postRoll}
                   title="{t(inc.columns[i])} · {STATE[st]}{s.rtt[i] >= 0 ? ' · ' + s.rtt[i].toFixed(1) + ' ms' : ''}"></td>
@@ -106,6 +107,8 @@
   .slow { background: #f4a261; }
   .lost { background: #d62828; }
   .none { background: var(--none-cell); }
+  .maybe { background: repeating-linear-gradient(45deg, #9b8ec7 0 3px, #d8d0f0 3px 6px); }
+  .mayben { color: #9b8ec7; font-style: normal; font-size: 11px; margin-left: 6px; }
   .pre { opacity: 0.4; }
   .badge { font-size: 11px; padding: 1px 7px; border-radius: 8px; color: #fff; background: #d62828; white-space: nowrap; }
   .b-target, .b-alt { background: #3a5a8c; }

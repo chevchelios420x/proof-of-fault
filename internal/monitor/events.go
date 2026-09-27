@@ -234,6 +234,9 @@ func (r *runner) checkCustom(t *tick, pathLost []bool) {
 		if rtt, ok := t.result[c.key]; ok && rtt >= 0 {
 			continue
 		}
+		if otherProtocolAnswered(t, c.key) {
+			continue // maybe false positive: the other protocol reached the host
+		}
 		ctx := "Der Heimrouter antwortete zur selben Zeit."
 		for i, s := range t.order {
 			if s.zone == path.LAN && pathLost[i] {

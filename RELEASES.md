@@ -6,6 +6,17 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.15.0 – 2026-09-27
+
+- **„Möglicher Fehlalarm“**: Widersprechen sich Ping und TCP-Check desselben
+  Hosts (z. B. Ping weg, TCP:443 ok), gilt der Host als erreichbar. Das
+  ausgefallene Protokoll wird in dieser Sekunde als möglicher Fehlalarm markiert
+  (lila gestreift in der Störungs-Matrix, „X s Fehlalarm?“) statt als Verlust.
+  Es startet keine Störung, hält keine offen, erzeugt keinen Ereignis-Eintrag
+  und keinen Signalton. Damit bleiben dauerhaft gefilterte Pings (z. B. 1.1.1.1)
+  ohne Einfluss auf die Auswertung, und echte Ausfälle werden wieder als eigene
+  Störungen erkannt.
+
 ## v0.14.2 – 2026-09-27
 
 - Lange Störungen sprengen das Layout nicht mehr: Die Seite scrollt nie
