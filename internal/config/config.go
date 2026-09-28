@@ -58,6 +58,20 @@ type Settings struct {
 	DefaultWindowMin int              `json:"defaultWindowMin"` // live chart window
 	Sounds           Sounds           `json:"sounds"`
 	Zones            []ZoneDef        `json:"zones"`
+
+	// Access technology of the internet connection: "dsl", "docsis" or
+	// "fibre". Only DOCSIS adds checks so far (FRITZ!Box cable data).
+	Access string `json:"access"`
+	Fritz  Fritz  `json:"fritz"`
+}
+
+// Fritz holds the FRITZ!Box access for line diagnostics.
+type Fritz struct {
+	URL         string `json:"url"`                // e.g. http://192.168.178.1
+	User        string `json:"user"`               // empty = last used user of the box
+	Password    string `json:"password,omitempty"` // stored protected; never sent to the UI
+	HasPassword bool   `json:"hasPassword"`        // UI: a password is stored
+	IntervalSec int    `json:"intervalSec"`        // regular DOCSIS reading
 }
 
 func builtinZones() []ZoneDef {
@@ -158,6 +172,21 @@ func (s Settings) Normalize() Settings {
 	}
 	if s.Sounds.CooldownSec < 0 {
 		s.Sounds.CooldownSec = 0
+	}
+	if s.Access != "dsl" && s.Access != "docsis" && s.Access != "fibre" {
+		s.Access = "dsl"
+	}
+	if s.Fritz.URL == "" {
+		s.Fritz.URL = "http://192.168.178.1"
+	}
+	if s.Fritz.IntervalSec == 0 {
+		s.Fritz.IntervalSec = 60
+	}
+	if s.Fritz.IntervalSec < 15 {
+		s.Fritz.IntervalSec = 15
+	}
+	if s.Fritz.IntervalSec > 3600 {
+		s.Fritz.IntervalSec = 3600
 	}
 	if s.DefaultWindowMin < 0 {
 		s.DefaultWindowMin = d.DefaultWindowMin

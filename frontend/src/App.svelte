@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession, SetSessionNote } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession, SetSessionNote, GetDocsis, TestFritz } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
@@ -8,6 +8,7 @@
   import IncidentList from './IncidentList.svelte'
   import Settings from './Settings.svelte'
   import NetInfo from './NetInfo.svelte'
+  import Docsis from './Docsis.svelte'
   import { signalFor } from './sound.js'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap, DEFAULT_ZONES } from './zones.js'
@@ -39,6 +40,16 @@
     applyTheme(settings.theme)
     liveWindow = settings.defaultWindowMin
   }
+  // Access technology (DSL / DOCSIS / fibre) and DOCSIS readings.
+  let liveDocsis = []
+  let histDocsis = []
+  $: access = settings?.access || 'dsl'
+  $: fritzReady = !!(settings?.fritz?.hasPassword && settings?.fritz?.url)
+  async function setAccess(a) {
+    if (!settings) return
+    try { settings = await SaveSettings({ ...settings, access: a }) } catch (e) { error = String(e) }
+  }
+
   let noteSaved = null
   async function saveNote(id, note) {
     try {
@@ -196,6 +207,10 @@
     })
     EventsOn('stats', (s) => (stats = s))
     EventsOn('realloss', (x) => (realLoss = x))
+    EventsOn('docsis', (d) => (liveDocsis = [...liveDocsis, d]))
+    if (status.sessionId) {
+      try { liveDocsis = ((await GetDocsis(status.sessionId)) || []) } catch {}
+    }
     EventsOn('incident', (inc) => {
       liveIncidents = [...liveIncidents, inc]
       refreshDiag()
@@ -223,7 +238,7 @@
     error = ''
     localStorage.setItem('target', target)
     live.reset(); liveVersion++
-    stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null; liveIncidents = []; realLoss = {}; liveNote = ''
+    stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null; liveIncidents = []; realLoss = {}; liveNote = ''; liveDocsis = []
     startedAt = Date.now()
     try { await StartMonitoring(target.trim()) } catch (e) { error = String(e) }
   }
@@ -243,6 +258,7 @@
     exportMsg = ''
     sessionData = await GetSession(id)
     hist.loadSeries(sessionData.series || [])
+    try { histDocsis = (await GetDocsis(id)) || [] } catch { histDocsis = [] }
     histVersion++
   }
 
@@ -278,6 +294,17 @@
       {:else}
         <button class="primary" on:click={start}>Überwachung starten</button><Help text={HELP.start} />
       {/if}
+      <fieldset class="access" disabled={running}>
+        <legend>Anschluss<Help align="left" text={HELP.access} /></legend>
+        {#each [['dsl', 'DSL'], ['docsis', 'Kabel (DOCSIS)'], ['fibre', 'Glasfaser']] as [v, l]}
+          <label><input type="radio" name="access" value={v} checked={access === v} on:change={() => setAccess(v)} /> {l}</label>
+        {/each}
+        {#if access === 'docsis' && !fritzReady}
+          <button class="link" on:click={() => (showSettings = true)}>⚠ FRITZ!Box-Zugang einrichten</button>
+        {:else if access !== 'docsis'}
+          <span class="muted small">(vorbereitet)</span>
+        {/if}
+      </fieldset>
       {#if status.sessionId && running}
         <label class="notebox livenote">
           <span>Kommentar zur laufenden Messung<Help align="left" text={HELP.note} /></span>
@@ -336,6 +363,12 @@
       </section>
 
       <div class="two">
+        {#if access === 'docsis' || liveDocsis.length}
+          <section class="card">
+            <h2>DOCSIS-Leitungswerte (FRITZ!Box)<Help align="left" text={HELP.docsis} /></h2>
+            <Docsis live readings={liveDocsis} />
+          </section>
+        {/if}
         <section class="card">
           <h2>Störungen – wer hat wann nicht geantwortet?<Help align="left" text={HELP.incidents} /></h2>
           <IncidentList zones={zoneDefs} incidents={liveIncidents} onSelect={(i) => liveChart?.zoomTo(i.t - 60000, i.end + 60000)} />
@@ -476,6 +509,12 @@
             <Diagnosis d={r.diagnosis} />
             {#if exportMsg}<p class="muted">{exportMsg}</p>{/if}
           </section>
+          {#if histDocsis.length}
+            <section class="card">
+              <h2>DOCSIS-Leitungswerte (FRITZ!Box)<Help align="left" text={HELP.docsis} /></h2>
+              <Docsis readings={histDocsis} />
+            </section>
+          {/if}
           <section class="card">
             <h2>Messrechner &amp; Netzwerk<Help align="left" text={HELP.netinfo} /></h2>
             <NetInfo net={r.net} />
@@ -512,7 +551,7 @@
 </main>
 
 {#if showSettings && settings}
-  <Settings {settings} onSave={saveSettings} onClose={() => (showSettings = false)} onDefaults={DefaultSettings} onPreviewTheme={applyTheme} />
+  <Settings {settings} onSave={saveSettings} onClose={() => (showSettings = false)} onDefaults={DefaultSettings} onPreviewTheme={applyTheme} onTest={TestFritz} />
 {/if}
 
 <style>
@@ -529,6 +568,12 @@
   .notebox textarea { font: inherit; font-size: 13px; color: var(--fg); background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; resize: vertical; }
   .snote { color: var(--muted); display: inline-block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
   .livenote { flex: 1 1 260px; }
+  .access { border: 1px solid var(--border); border-radius: 6px; padding: 2px 10px 6px; display: flex; gap: 10px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+  .access legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+  .controls .access label { display: inline-flex; flex-direction: row; gap: 4px; align-items: center; color: var(--fg); font-size: 13px; }
+  .access { flex: 0 0 auto; }
+  .controls .access input[type='radio'] { padding: 0; margin: 0; width: auto; }
+  .link { border: none; background: none; color: var(--accent); padding: 0; text-decoration: underline; font-size: 12px; }
   main { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; max-width: 100vw; box-sizing: border-box; }
   main > :global(*) { min-width: 0; }
   main :global(.card) { min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }

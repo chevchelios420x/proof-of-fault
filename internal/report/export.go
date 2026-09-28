@@ -99,6 +99,9 @@ var funcs = template.FuncMap{
 	"dur":  func(sec float64) string { return (time.Duration(sec) * time.Second).Round(time.Second).String() },
 	"f1":   func(v float64) string { return fmt.Sprintf("%.1f", v) },
 	"kind": kindText,
+	"dstatus": func(s string) string {
+		return map[string]string{"good": "in Ordnung", "warning": "auffällig", "critical": "kritisch"}[s]
+	},
 	"join": func(xs []string) string {
 		if len(xs) == 0 {
 			return "–"
@@ -126,6 +129,7 @@ th{background:#f1f1f1}
 table.net th{text-align:left;background:#f1f1f1;width:15%}table.net td{text-align:left}
 details{margin:4px 0}summary{cursor:pointer;font-weight:600}pre{background:#f6f6f6;padding:8px;font-size:11px;overflow-x:auto;white-space:pre}
 @media print{details>pre{display:block}}
+.ds-warning{background:#fff6e0}.ds-critical{background:#fde2e2}
 .note{background:#f4f4f4;border-left:4px solid #999;padding:8px 14px;margin:8px 0;white-space:pre-wrap}.c-d{background:#5a3a3a}.c-p{background:repeating-linear-gradient(45deg,#9b8ec7 0 3px,#d8d0f0 3px 6px)}.c-ok{background:#52b788}.c-s{background:#f4a261}.c-x{background:#d62828}.c-n{background:#ddd}
 table.mx{width:auto;border-collapse:separate;border-spacing:1px}table.mx td{padding:0;border:none;width:9px;height:14px}
 table.mx td.lbl{padding:0 8px 0 0;width:auto;white-space:nowrap;text-align:left;font-size:12px}
@@ -179,10 +183,19 @@ small{color:#666}
 {{range $i, $in := .R.Incidents}}{{if lt $i 200}}
 <div class="inc" id="inc{{$in.ID}}"><h3>Störung {{inc $i}}: {{$in.Title}}</h3>
 <p><b>{{ts $in.T}} – {{ts $in.End}}</b> · {{$in.Detail}}</p>
-{{matrix $in $.R.ZoneDefs}}</div>
+{{matrix $in $.R.ZoneDefs}}
+{{with index $.R.IncidentDocsis $in.ID}}<p><b>DOCSIS rund um diese Störung:</b></p><ul>{{range .}}<li>{{ts .T}} ({{.Reason}}): {{dstatus .Status}}, SNR/MER min {{f1 .SNRMin}} dB, nicht korr. Fehler +{{.NonCorrDelta}}{{if .Issues}} – {{join .Issues}}{{end}}</li>{{end}}</ul>{{end}}</div>
 {{end}}{{end}}
 {{if gt (len .R.Incidents) 200}}<p><small>Matrix nur für die ersten 200 Störungen; alle sind in der Liste oben und im Ereignis-Export enthalten.</small></p>{{end}}
 {{else}}<p>Keine.</p>{{end}}
+
+{{if .R.Docsis}}
+<h2>DOCSIS-Leitungswerte (Kabel-FRITZ!Box)</h2>
+<small>Abgefragt beim Messbeginn, in festen Abständen sowie zu Beginn und Ende jeder Störung. Bewertung nach den Vodafone-Schwellwerten (DOCSight-Profil „VFKD“, Vodafone pNTP v1.06). Fehlerzähler: Differenz zur vorherigen Abfrage.</small>
+<table class="log"><tr><th>Zeit</th><th>Anlass</th><th>Status</th><th>DS-Kanäle</th><th>DS-Pegel dBmV</th><th>SNR/MER min dB</th><th>US-Kanäle</th><th>US-Pegel dBmV</th><th>korr. Δ</th><th>nicht korr. Δ</th><th>Auffälligkeiten</th></tr>
+{{range .R.Docsis}}<tr class="ds-{{.Status}}"><td>{{ts .T}}</td><td>{{.Reason}}</td><td>{{dstatus .Status}}</td><td>{{len .DS}}</td><td>{{f1 .DSPowerMin}} … {{f1 .DSPowerMax}}</td><td>{{f1 .SNRMin}}</td><td>{{len .US}}</td><td>{{f1 .USPowerMin}} … {{f1 .USPowerMax}}</td><td>{{.CorrDelta}}</td><td>{{.NonCorrDelta}}</td><td>{{join .Issues}}</td></tr>
+{{end}}</table>
+{{end}}
 
 <h2>Ereignisprotokoll</h2>
 <small>Jede Messsekunde wird über alle Messpunkte gemeinsam ausgewertet: Ein Verlust oder eine Latenzspitze wird dem ersten Hop zugeordnet, ab dem alle weiteren Messpunkte bis zum Ziel betroffen waren. Verluste nur an einem Zwischen-Hop (das Ziel antwortete) sind als harmlos markiert.</small>

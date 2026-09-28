@@ -6,6 +6,16 @@
   export let onClose = () => {}
   export let onDefaults = async () => settings
   export let onPreviewTheme = (t) => {}
+  export let onTest = async (url, user, password) => ({})
+
+  let testing = false
+  let testRes = null
+  async function test() {
+    testing = true
+    testRes = null
+    try { testRes = await onTest(s.fritz.url, s.fritz.user, s.fritz.password || '') } catch (e) { testRes = { error: String(e) } }
+    testing = false
+  }
 
   let s = JSON.parse(JSON.stringify(settings))
   let saving = false
@@ -70,6 +80,44 @@
             <option value={90}>90 min</option><option value={0}>gesamte Messung</option>
           </select>
         </label>
+      </section>
+
+      <section>
+        <h3>Anschluss &amp; FRITZ!Box
+          <Help align="left" text={'Bei Kabelanschluss (DOCSIS) liest die App die Leitungswerte der FRITZ!Box: Downstream-/Upstream-Pegel, SNR/MER und die Zähler für korrigierbare und nicht korrigierbare Fehler. Dafür braucht sie einen FRITZ!Box-Benutzer (am besten ein eigener Benutzer mit dem Recht „FRITZ!Box Einstellungen“). Das Kennwort wird mit Windows-Datenschutz (DPAPI) verschlüsselt gespeichert und nie angezeigt. DSL- und Glasfaser-Auswertung sind vorbereitet.'} />
+        </h3>
+        <label class="row">Anschlussart
+          <select bind:value={s.access}>
+            <option value="dsl">DSL (vorbereitet)</option>
+            <option value="docsis">Kabel (DOCSIS)</option>
+            <option value="fibre">Glasfaser (vorbereitet)</option>
+          </select>
+        </label>
+        <label class="row">FRITZ!Box-Adresse
+          <input class="wide" bind:value={s.fritz.url} placeholder="http://192.168.178.1" />
+        </label>
+        <label class="row">Benutzername
+          <input class="wide" bind:value={s.fritz.user} placeholder="leer = zuletzt angemeldeter Benutzer" />
+        </label>
+        <label class="row">Kennwort
+          <input class="wide" type="password" bind:value={s.fritz.password} placeholder={s.fritz.hasPassword ? '•••••• gespeichert (leer lassen = behalten)' : 'Kennwort'} autocomplete="off" />
+        </label>
+        {#if s.fritz.hasPassword}
+          <label class="check"><input type="checkbox" checked={!s.fritz.hasPassword} on:change={(e) => (s.fritz.hasPassword = !e.target.checked)} /> gespeichertes Kennwort löschen</label>
+        {/if}
+        <label class="row">DOCSIS-Werte abfragen alle … Sekunden
+          <span><input type="number" min="15" max="3600" step="5" bind:value={s.fritz.intervalSec} /><Help align="right" text="Regelmäßige Abfrage zusätzlich zu den Abfragen bei Beginn und Ende jeder Störung. 60 s ist ein guter Wert; die FRITZ!Box verkraftet auch 15–30 s, rechnet die Seite aber jedes Mal neu. Minimum 15 s." /></span>
+        </label>
+        <div class="row">
+          <button on:click={test} disabled={testing}>{testing ? 'Teste …' : 'Verbindung testen'}</button>
+          {#if testRes}
+            {#if testRes.ok}
+              <span class="ok">✓ {testRes.model || 'FRITZ!Box'}: {testRes.ds} Downstream- / {testRes.us} Upstream-Kanäle, Leitungswerte {({ good: 'in Ordnung', warning: 'auffällig', critical: 'kritisch' })[testRes.status]}</span>
+            {:else}
+              <span class="err">✗ {testRes.model ? testRes.model + ': ' : ''}{testRes.error}</span>
+            {/if}
+          {/if}
+        </div>
       </section>
 
       <section>
@@ -211,6 +259,8 @@
   .actions { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
   .grow { flex: 1; }
   .err { color: var(--bad); }
+  .ok { color: #2a9d8f; font-size: 12px; }
+  .row input.wide { width: 300px; }
   .disabled { opacity: 0.45; pointer-events: none; }
   .play { padding: 0 6px; font-size: 10px; margin-left: 4px; }
   .grid td.c { text-align: center; }

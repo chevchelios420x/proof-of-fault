@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chevchelios420x/proof-of-fault/internal/docsis"
 	"github.com/chevchelios420x/proof-of-fault/internal/netinfo"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
 )
@@ -51,6 +52,24 @@ func TestHTMLNetInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"Messrechner", "192.168.0.6", "Standard-Gateway", "ARP-Tabelle"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+}
+
+func TestHTMLDocsis(t *testing.T) {
+	in := store.Incident{ID: 7, T: 100000, End: 110000, Seconds: 10, Class: "isp", Columns: []int64{100000}, Series: []store.IncidentSeries{{Label: "x", States: "x", RTT: []float64{-1}}}}
+	snaps := []docsis.Snapshot{{T: 95000, Reason: "Störung begonnen", Status: "critical", NonCorrDelta: 42, Issues: []string{"Downstream-Kanal 3: SNR"}}, {T: 999999999, Status: "good"}}
+	r := Report{Incidents: []store.Incident{in}, Docsis: snaps, IncidentDocsis: map[int64][]docsis.Snapshot{7: DocsisAround(snaps, in.T, in.End)}}
+	if len(r.IncidentDocsis[7]) != 1 {
+		t.Fatalf("around: %+v", r.IncidentDocsis[7])
+	}
+	var b strings.Builder
+	if err := WriteHTML(&b, r, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DOCSIS-Leitungswerte", "DOCSIS rund um diese Störung", "+42", "kritisch"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("missing %q", want)
 		}

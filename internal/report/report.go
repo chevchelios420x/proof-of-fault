@@ -6,11 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/config"
+	"github.com/chevchelios420x/proof-of-fault/internal/docsis"
 	"github.com/chevchelios420x/proof-of-fault/internal/metrics"
 	"github.com/chevchelios420x/proof-of-fault/internal/netinfo"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
@@ -48,7 +50,10 @@ type Report struct {
 	HighLatencyMs float64            `json:"highLatencyMs"`
 	ZoneDefs      []config.ZoneDef   `json:"zoneDefs"`
 	Net           *netinfo.Snapshot  `json:"net"` // network setup at measurement start
-	DataSHA256    string             `json:"dataSha256"`
+	Docsis        []docsis.Snapshot  `json:"docsis"`
+	// DOCSIS readings taken around each incident (by incident ID).
+	IncidentDocsis map[int64][]docsis.Snapshot `json:"incidentDocsis"`
+	DataSHA256     string                      `json:"dataSha256"`
 }
 
 // Series is the chart data of a session (aligned per zone).
@@ -172,7 +177,20 @@ func Build(st *store.Store, id int64) (Report, []Series, []store.Sample, error) 
 	if err != nil {
 		return rep, nil, nil, err
 	}
+	if raws, err := st.DocsisSnapshots(id); err == nil {
+		for _, r := range raws {
+			var s docsis.Snapshot
+			if json.Unmarshal(r, &s) == nil {
+				rep.Docsis = append(rep.Docsis, s)
+			}
+		}
+	}
+	rep.IncidentDocsis = map[int64][]docsis.Snapshot{}
+	for _, in := range rep.Incidents {
+		rep.IncidentDocsis[in.ID] = DocsisAround(rep.Docsis, in.T, in.End)
+	}
 	rep.Diagnosis = DiagnoseAll(rep.Events, rep.Incidents)
+	addDocsisDiagnosis(&rep.Diagnosis, rep.Docsis, rep.IncidentDocsis)
 	rep.PathChanges = rep.Diagnosis.RouteChanges
 	return rep, series, samples, nil
 }
@@ -188,4 +206,53 @@ func Live(st *store.Store, id int64) (Diagnosis, []store.Event, []store.Incident
 		return Diagnosis{}, nil, nil, err
 	}
 	return DiagnoseAll(evs, ins), evs, ins, nil
+}
+
+// docsisMargin is how far before/after an incident readings are related to
+// it (the incident triggers a reading at start and end anyway).
+const docsisMargin = 90 * 1000 // ms
+
+// DocsisAround returns the DOCSIS readings from shortly before an incident
+// until shortly after it.
+func DocsisAround(all []docsis.Snapshot, start, end int64) []docsis.Snapshot {
+	var out []docsis.Snapshot
+	for _, s := range all {
+		if s.T >= start-docsisMargin && s.T <= end+docsisMargin {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// addDocsisDiagnosis adds the cable line findings to the diagnosis.
+func addDocsisDiagnosis(d *Diagnosis, all []docsis.Snapshot, around map[int64][]docsis.Snapshot) {
+	if len(all) == 0 {
+		return
+	}
+	bad, crit := 0, 0
+	var nonCorr int64
+	for _, s := range all {
+		switch s.Status {
+		case "warning":
+			bad++
+		case "critical":
+			bad++
+			crit++
+		}
+		nonCorr += s.NonCorrDelta
+	}
+	line := fmt.Sprintf("DOCSIS-Leitungswerte der FRITZ!Box: %d Abfragen, davon %d auffällig (%d kritisch); insgesamt %d neue nicht korrigierbare Fehler.", len(all), bad, crit, nonCorr)
+	near := 0
+	for _, list := range around {
+		for _, s := range list {
+			if s.Status != "good" || s.NonCorrDelta > 0 {
+				near++
+				break
+			}
+		}
+	}
+	if len(around) > 0 {
+		line += fmt.Sprintf(" Bei %d von %d Störungen waren die Leitungswerte rund um die Störung auffällig – ein Hinweis auf ein Problem der Kabelstrecke (Anbieter).", near, len(around))
+	}
+	d.Explanation = append(d.Explanation, line)
 }

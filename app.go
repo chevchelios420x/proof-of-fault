@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/probe"
 	"github.com/chevchelios420x/proof-of-fault/internal/report"
+	"github.com/chevchelios420x/proof-of-fault/internal/secret"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
 )
 
@@ -61,7 +63,14 @@ func (a *App) GetSettings() (config.Settings, error) {
 	if err := a.ready(); err != nil {
 		return config.Defaults(), err
 	}
-	return a.monitor.Settings(), nil
+	return forUI(a.monitor.Settings()), nil
+}
+
+// forUI removes the stored (protected) password before settings go to the UI.
+func forUI(cfg config.Settings) config.Settings {
+	cfg.Fritz.HasPassword = cfg.Fritz.Password != ""
+	cfg.Fritz.Password = ""
+	return cfg
 }
 
 // SaveSettings stores and applies settings.
@@ -71,9 +80,53 @@ func (a *App) SaveSettings(cfg config.Settings) (config.Settings, error) {
 	}
 	cfg.LastTarget = a.monitor.Settings().LastTarget
 	if err := a.monitor.SaveSettings(cfg); err != nil {
-		return cfg, err
+		return forUI(cfg), err
 	}
-	return a.monitor.Settings(), nil
+	return forUI(a.monitor.Settings()), nil
+}
+
+// FritzTest is the result of a FRITZ!Box connection test.
+type FritzTest struct {
+	OK     bool     `json:"ok"`
+	Error  string   `json:"error"`
+	Model  string   `json:"model"`
+	DS     int      `json:"ds"`
+	US     int      `json:"us"`
+	Status string   `json:"status"`
+	Issues []string `json:"issues"`
+}
+
+// TestFritz logs in and reads the DOCSIS data once. An empty password uses
+// the stored one.
+func (a *App) TestFritz(url, user, password string) FritzTest {
+	if err := a.ready(); err != nil {
+		return FritzTest{Error: err.Error()}
+	}
+	cfg := a.monitor.Settings()
+	cfg.Fritz.URL, cfg.Fritz.User = url, user
+	if password != "" {
+		cfg.Fritz.Password = secret.Protect(password)
+	}
+	c := monitor.FritzClient(cfg)
+	if c == nil {
+		return FritzTest{Error: "Bitte Adresse und Kennwort der FRITZ!Box eingeben."}
+	}
+	res := FritzTest{Model: c.Model()}
+	s, err := c.Fetch()
+	if err != nil {
+		res.Error = err.Error()
+		return res
+	}
+	res.OK, res.DS, res.US, res.Status, res.Issues = true, len(s.DS), len(s.US), s.Status, s.Issues
+	return res
+}
+
+// GetDocsis returns all DOCSIS readings of a session.
+func (a *App) GetDocsis(id int64) ([]json.RawMessage, error) {
+	if err := a.ready(); err != nil {
+		return nil, err
+	}
+	return a.store.DocsisSnapshots(id)
 }
 
 // DefaultSettings returns the factory settings (for "reset").

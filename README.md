@@ -18,7 +18,7 @@ Status: **Windows** (IPv4). Linux/macOS folgen (siehe `internal/probe`).
 
 ## Benutzung (Windows)
 
-Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.17.0.exe`](build/bin/proof-of-fault-v0.17.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
+Die aktuelle EXE liegt im Repo unter [`build/bin/proof-of-fault-v0.18.0.exe`](build/bin/proof-of-fault-v0.18.0.exe). Änderungen je Version: [RELEASES.md](RELEASES.md).
 
 1. `proof-of-fault.exe` starten. Es sind keine Admin-Rechte und keine Installation
    nötig; die WebView2-Runtime ist bei Windows 10/11 vorhanden.
@@ -52,6 +52,11 @@ dienen als Ausweichziele – so unterscheidet die App „nur das Ziel war weg“
 **Einstellungen (⚙):** Schwellwerte für Latenzspitzen je Zone, Ausfall-Grenze,
 Timeout, Signaltöne je Zone und bei Routenwechsel, Farbschema (hell/dunkel/automatisch), Standby-Sperre während der Messung,
 automatisches Fortsetzen beim Start und automatisches Löschen alter Messungen.
+
+**Kabelanschluss (DOCSIS):** Bei Anschlussart „Kabel (DOCSIS)“ liest die App die
+Leitungswerte der FRITZ!Box (Pegel, SNR/MER, Fehlerzähler) beim Start, im Intervall
+und bei jeder Störung mit. Login und Auswertung basieren auf
+[DOCSight](https://github.com/itsDNNS/docsight) von Dennis Braun (MIT-Lizenz).
 
 Tipps für belastbare Nachweise: Den PC **per LAN-Kabel** anschließen (sonst sieht der
 Provider WLAN als Ursache). Mehrere Stunden bis Tage messen und den Energiesparmodus

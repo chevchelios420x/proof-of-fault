@@ -215,6 +215,7 @@ func (r *runner) trackIncident(ts *tickState) {
 		if r.inc == nil {
 			r.inc = &incBuf{ticks: append([]*tickState(nil), r.recent...), class: ts.class}
 			r.inc.pre = len(r.inc.ticks)
+			r.pollDocsis("Störung begonnen")
 		}
 		b := r.inc
 		b.ticks = append(b.ticks, ts)
@@ -273,6 +274,9 @@ func (r *runner) splitIncident() {
 func (r *runner) closeIncident() {
 	b := r.inc
 	r.inc = nil
+	if b != nil {
+		r.pollDocsis("Störung beendet")
+	}
 	if b == nil || b.lastProblem < b.pre {
 		return
 	}

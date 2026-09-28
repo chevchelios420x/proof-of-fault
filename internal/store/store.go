@@ -81,6 +81,14 @@ CREATE TABLE IF NOT EXISTS setting (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS docsis_snapshot (
+	session_id INTEGER NOT NULL,
+	ts_ns      INTEGER NOT NULL,
+	reason     TEXT NOT NULL,
+	status     TEXT NOT NULL,
+	data       TEXT NOT NULL      -- JSON: docsis.Snapshot
+);
+CREATE INDEX IF NOT EXISTS docsis_idx ON docsis_snapshot(session_id, ts_ns);
 CREATE TABLE IF NOT EXISTS outage (
 	session_id INTEGER NOT NULL,
 	zone       TEXT NOT NULL,     -- zone the fault is attributed to
@@ -657,7 +665,7 @@ func (s *Store) DeleteSession(id int64) error {
 	if err != nil {
 		return err
 	}
-	for _, t := range []string{"sample", "path_snapshot", "outage", "event", "incident"} {
+	for _, t := range []string{"sample", "path_snapshot", "outage", "event", "incident", "docsis_snapshot"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE session_id=?`, id); err != nil {
 			tx.Rollback()
 			return err
@@ -714,4 +722,33 @@ func seedCustomPoints(db *sql.DB) {
 		db.Exec(`INSERT OR IGNORE INTO custom_point(host, name, zone, enabled, tcp, port) VALUES(?,?,?,0,0,?)`, p.Host, p.Name, p.Zone, p.Port)
 	}
 	db.Exec(`INSERT INTO setting(key, value) VALUES('seeded_custom', '1')`)
+}
+
+// AddDocsis stores a DOCSIS reading (v must marshal to JSON with a "t" field).
+func (s *Store) AddDocsis(sid int64, t time.Time, reason, status string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO docsis_snapshot(session_id, ts_ns, reason, status, data) VALUES(?,?,?,?,?)`,
+		sid, t.UnixNano(), reason, status, string(b))
+	return err
+}
+
+// DocsisSnapshots returns the raw JSON of all DOCSIS readings of a session.
+func (s *Store) DocsisSnapshots(sid int64) ([]json.RawMessage, error) {
+	rows, err := s.db.Query(`SELECT data FROM docsis_snapshot WHERE session_id=? ORDER BY ts_ns`, sid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []json.RawMessage
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		out = append(out, json.RawMessage(d))
+	}
+	return out, rows.Err()
 }

@@ -15,11 +15,13 @@ import (
 	"time"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/config"
+	"github.com/chevchelios420x/proof-of-fault/internal/docsis"
 	"github.com/chevchelios420x/proof-of-fault/internal/metrics"
 	"github.com/chevchelios420x/proof-of-fault/internal/netinfo"
 	"github.com/chevchelios420x/proof-of-fault/internal/path"
 	"github.com/chevchelios420x/proof-of-fault/internal/power"
 	"github.com/chevchelios420x/proof-of-fault/internal/probe"
+	"github.com/chevchelios420x/proof-of-fault/internal/secret"
 	"github.com/chevchelios420x/proof-of-fault/internal/store"
 )
 
@@ -115,6 +117,15 @@ func (m *Monitor) Settings() config.Settings {
 // running measurement).
 func (m *Monitor) SaveSettings(cfg config.Settings) error {
 	cfg = cfg.Normalize()
+	// Password: new value → store protected; empty + HasPassword → keep the
+	// stored one; empty without HasPassword → remove it.
+	switch {
+	case cfg.Fritz.Password != "":
+		cfg.Fritz.Password = secret.Protect(cfg.Fritz.Password)
+	case cfg.Fritz.HasPassword:
+		cfg.Fritz.Password = m.Settings().Fritz.Password
+	}
+	cfg.Fritz.HasPassword = cfg.Fritz.Password != ""
 	if err := m.store.SaveSettings(cfg); err != nil {
 		return err
 	}
@@ -460,7 +471,16 @@ type runner struct {
 	inc         *incBuf
 	realLost    map[string]int // losses that reached the target, per series
 	persist     map[string]int // consecutive seconds without answer per custom point
-	cfg         config.Settings
+
+	// DOCSIS readings of the cable FRITZ!Box
+	fritz         *docsis.Client
+	fritzKey      string
+	docsisRes     chan docsisResult
+	docsisBusy    bool
+	docsisPending string
+	docsisFailing bool
+	lastDocsis    *docsis.Snapshot
+	cfg           config.Settings
 
 	ctx context.Context
 	wg  *sync.WaitGroup
@@ -488,7 +508,7 @@ func newRunner(m *Monitor, sid int64, dst netip.Addr, hops []path.Hop, reps []pa
 	r := &runner{m: m, sid: sid, dst: dst, hops: hops, reps: reps,
 		results: make(chan result, 256), zones: map[path.Zone]*zoneState{}, hopMode: map[string]*hopProbe{},
 		seq: 0, nextSeq: 1, ticks: map[int]*tick{}, done: map[int]bool{}, base: map[string]*baseline{},
-		episodes: map[string]*episode{}, realLost: map[string]int{}, persist: map[string]int{}, cfg: m.Settings(), names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
+		episodes: map[string]*episode{}, realLost: map[string]int{}, persist: map[string]int{}, docsisRes: make(chan docsisResult, 1), cfg: m.Settings(), names: m.store.HopNames(), pathUpdates: make(chan []path.Hop, 1)}
 	for _, z := range path.Zones {
 		r.zones[z] = &zoneState{}
 	}
@@ -500,6 +520,9 @@ func (r *runner) loop(ctx context.Context) error {
 	defer tick.Stop()
 	flush := time.NewTicker(time.Second)
 	defer flush.Stop()
+	docsisTick := time.NewTicker(time.Duration(r.cfg.Fritz.IntervalSec) * time.Second)
+	defer docsisTick.Stop()
+	docsisEvery := r.cfg.Fritz.IntervalSec
 	rediscoverEvery := time.Duration(r.cfg.RediscoverMin) * time.Minute
 	rediscover := time.NewTicker(rediscoverEvery)
 	defer rediscover.Stop()
@@ -507,6 +530,7 @@ func (r *runner) loop(ctx context.Context) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	r.ctx, r.wg = ctx, &wg
+	r.pollDocsis("Messbeginn")
 	r.syncWatched()
 
 	r.fire(ctx, &wg)
@@ -531,6 +555,14 @@ func (r *runner) loop(ctx context.Context) error {
 			r.updatePath(ctx, hops)
 		case f := <-r.m.cmds:
 			f(r)
+			if r.cfg.Fritz.IntervalSec != docsisEvery { // settings changed
+				docsisEvery = r.cfg.Fritz.IntervalSec
+				docsisTick.Reset(time.Duration(docsisEvery) * time.Second)
+			}
+		case <-docsisTick.C:
+			r.pollDocsis("Intervall")
+		case res := <-r.docsisRes:
+			r.handleDocsis(res)
 		}
 	}
 }

@@ -6,6 +6,25 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.18.0 – 2026-09-28
+
+- **Anschlussart** neben „Überwachung starten“: DSL · Kabel (DOCSIS) · Glasfaser.
+  DSL und Glasfaser sind vorbereitet (noch ohne Zusatzprüfungen).
+- **DOCSIS-Leitungswerte der Kabel-FRITZ!Box** (bei Anschlussart „Kabel“):
+  Anmeldung und Abfrage nach dem Vorbild von DOCSight (MIT-Lizenz,
+  github.com/itsDNNS/docsight), nativ in Go umgesetzt. Gelesen werden alle
+  Downstream-/Upstream-Kanäle (DOCSIS 3.0/3.1) mit Pegel, SNR/MER, Modulation und
+  den Zählern für korrigierbare/nicht korrigierbare Fehler; bewertet nach den
+  Vodafone-Schwellwerten (DOCSight-Profil „VFKD“).
+  - Abfrage beim Messbeginn, im einstellbaren Intervall (Standard 60 s,
+    Minimum 15 s) sowie **bei Beginn und Ende jeder Störung**.
+  - Ereignisprotokoll: Statuswechsel und neue nicht korrigierbare Fehler.
+  - Live-Karte „DOCSIS-Leitungswerte“, Verlauf, HTML-Bericht (Tabelle aller
+    Abfragen und die Werte rund um jede Störung) und eine Zeile in der Diagnose.
+- ⚙ Einstellungen → „Anschluss & FRITZ!Box“: Adresse, Benutzer, Kennwort
+  (unter Windows per DPAPI verschlüsselt gespeichert, wird nie angezeigt),
+  Abfrageintervall und „Verbindung testen“.
+
 ## v0.17.0 – 2026-09-28
 
 - **Messrechner & Netzwerk im Bericht**: Beim Start jeder Messung wird automatisch
