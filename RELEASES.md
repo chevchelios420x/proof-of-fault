@@ -6,6 +6,16 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.19.0 – 2026-09-28
+
+- **DOCSIS-Verlauf als Diagramme** (live und im Verlauf), vier kleine Diagramme:
+  Downstream-Pegel, Signalqualität SNR/MER, Upstream-Sendepegel und neue nicht
+  korrigierbare Fehler je Abfrage. **Rot gestrichelte Linien** zeigen die
+  Soll-Grenzen (Vodafone-Spezifikation), der Bereich außerhalb ist rötlich
+  hinterlegt, Störungen als rote Flächen – so sind Grenzwertverletzungen (z. B.
+  ein zu hoher Upstream-Pegel) auch für Laien sofort sichtbar. Erklärung per
+  Tooltip an jedem Diagrammtitel.
+
 ## v0.18.1 – 2026-09-28
 
 - FRITZ!Box-Zugang: Adresse (IP oder Name), Benutzer und Kennwort sind in

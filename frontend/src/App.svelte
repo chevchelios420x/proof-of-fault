@@ -9,6 +9,7 @@
   import Settings from './Settings.svelte'
   import NetInfo from './NetInfo.svelte'
   import Docsis from './Docsis.svelte'
+  import DocsisCharts from './DocsisCharts.svelte'
   import { signalFor } from './sound.js'
   import { Timeline } from './timeline.js'
   import { ZONES, ZONE_COLOR, ZONE_LABEL, fmtTime, fmtDur, hopKey, devKey, buildSeries, colorMap, DEFAULT_ZONES } from './zones.js'
@@ -366,6 +367,7 @@
         {#if access === 'docsis' || liveDocsis.length}
           <section class="card">
             <h2>DOCSIS-Leitungswerte (FRITZ!Box)<Help align="left" text={HELP.docsis} /></h2>
+            <DocsisCharts readings={liveDocsis} bands={liveIncidents} theme={themeTick} />
             <Docsis live readings={liveDocsis} onEdit={() => (showSettings = true)} />
           </section>
         {/if}
@@ -512,6 +514,7 @@
           {#if histDocsis.length}
             <section class="card">
               <h2>DOCSIS-Leitungswerte (FRITZ!Box)<Help align="left" text={HELP.docsis} /></h2>
+              <DocsisCharts readings={histDocsis} bands={r.incidents || []} theme={themeTick} />
               <Docsis readings={histDocsis} />
             </section>
           {/if}
