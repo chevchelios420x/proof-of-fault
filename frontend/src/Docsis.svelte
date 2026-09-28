@@ -2,6 +2,7 @@
   import Help from './Help.svelte'
   export let readings = [] // docsis.Snapshot[], oldest first
   export let live = false
+  export let onEdit = null // open the FRITZ!Box access settings
 
   const ST = { good: 'in Ordnung', warning: 'auffällig', critical: 'kritisch' }
   const f1 = (v) => (v === undefined || v === null ? '–' : Number(v).toFixed(1))
@@ -11,6 +12,9 @@
   $: nonCorr = readings.reduce((a, r) => a + (r.nonCorrDelta || 0), 0)
 </script>
 
+{#if onEdit}
+  <button class="edit" on:click={onEdit} title="Adresse, Benutzer und Kennwort der FRITZ!Box ändern und testen">⚙ FRITZ!Box-Zugang ändern / testen</button>
+{/if}
 {#if last}
   <div class="head">
     <span class="badge s-{last.status}">{ST[last.status]}</span>
@@ -56,6 +60,7 @@
 {/if}
 
 <style>
+  .edit { float: right; font-size: 12px; padding: 2px 8px; }
   .head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; margin-bottom: 6px; }
   .badge { padding: 1px 8px; border-radius: 8px; color: #fff; font-size: 12px; }
   .badge.s-good { background: #2a9d8f; }

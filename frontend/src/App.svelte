@@ -296,7 +296,7 @@
       {/if}
       <fieldset class="access" disabled={running}>
         <legend>Anschluss<Help align="left" text={HELP.access} /></legend>
-        {#each [['dsl', 'DSL'], ['docsis', 'Kabel (DOCSIS)'], ['fibre', 'Glasfaser']] as [v, l]}
+        {#each [['dsl', 'DSL'], ['docsis', 'Kabel (DOCSIS)'], ['fibre', 'Glasfaser'], ['mobile', 'LTE/5G']] as [v, l]}
           <label><input type="radio" name="access" value={v} checked={access === v} on:change={() => setAccess(v)} /> {l}</label>
         {/each}
         {#if access === 'docsis' && !fritzReady}
@@ -366,7 +366,7 @@
         {#if access === 'docsis' || liveDocsis.length}
           <section class="card">
             <h2>DOCSIS-Leitungswerte (FRITZ!Box)<Help align="left" text={HELP.docsis} /></h2>
-            <Docsis live readings={liveDocsis} />
+            <Docsis live readings={liveDocsis} onEdit={() => (showSettings = true)} />
           </section>
         {/if}
         <section class="card">

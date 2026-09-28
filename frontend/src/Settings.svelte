@@ -13,11 +13,18 @@
   async function test() {
     testing = true
     testRes = null
-    try { testRes = await onTest(s.fritz.url, s.fritz.user, s.fritz.password || '') } catch (e) { testRes = { error: String(e) } }
+    const key = accessKey
+    try { testRes = await onTest(s.fritz.url, s.fritz.user, s.fritz.password || '', s.access) } catch (e) { testRes = { error: String(e) } }
+    testedKey = key
     testing = false
   }
 
   let s = JSON.parse(JSON.stringify(settings))
+  // Changed FRITZ!Box access (address, user, password) should be tested.
+  $: accessKey = [s.fritz.url, s.fritz.user, s.fritz.password || '', s.fritz.hasPassword].join('\u0001')
+  const origKey = [settings.fritz?.url, settings.fritz?.user, '', settings.fritz?.hasPassword].join('\u0001')
+  let testedKey = origKey
+  $: untested = accessKey !== testedKey && !(s.fritz.password === '' && !s.fritz.hasPassword)
   let saving = false
   let err = ''
   const ZONES = [
@@ -40,6 +47,10 @@
   }
 
   async function save() {
+    if (untested && confirm('Die FRITZ!Box-Zugangsdaten wurden geändert, aber noch nicht getestet.\n\nOK = jetzt Verbindung testen\nAbbrechen = ohne Test speichern')) {
+      await test()
+      return
+    }
     saving = true
     err = ''
     try { await onSave(s); onClose() } catch (e) { err = String(e) }
@@ -91,16 +102,17 @@
             <option value="dsl">DSL (vorbereitet)</option>
             <option value="docsis">Kabel (DOCSIS)</option>
             <option value="fibre">Glasfaser (vorbereitet)</option>
+            <option value="mobile">LTE/5G (vorbereitet)</option>
           </select>
         </label>
-        <label class="row">FRITZ!Box-Adresse
-          <input class="wide" bind:value={s.fritz.url} placeholder="http://192.168.178.1" />
+        <label class="row">FRITZ!Box-Adresse (IP oder Name)
+          <input class="wide" bind:value={s.fritz.url} placeholder="z. B. 192.168.178.1 oder fritz.box" />
         </label>
         <label class="row">Benutzername
           <input class="wide" bind:value={s.fritz.user} placeholder="leer = zuletzt angemeldeter Benutzer" />
         </label>
         <label class="row">Kennwort
-          <input class="wide" type="password" bind:value={s.fritz.password} placeholder={s.fritz.hasPassword ? '•••••• gespeichert (leer lassen = behalten)' : 'Kennwort'} autocomplete="off" />
+          <input class="wide" type="password" bind:value={s.fritz.password} placeholder={s.fritz.hasPassword ? '•••••• gespeichert – neues eingeben zum Ändern' : 'Kennwort'} autocomplete="off" />
         </label>
         {#if s.fritz.hasPassword}
           <label class="check"><input type="checkbox" checked={!s.fritz.hasPassword} on:change={(e) => (s.fritz.hasPassword = !e.target.checked)} /> gespeichertes Kennwort löschen</label>
@@ -108,11 +120,18 @@
         <label class="row">DOCSIS-Werte abfragen alle … Sekunden
           <span><input type="number" min="15" max="3600" step="5" bind:value={s.fritz.intervalSec} /><Help align="right" text="Regelmäßige Abfrage zusätzlich zu den Abfragen bei Beginn und Ende jeder Störung. 60 s ist ein guter Wert; die FRITZ!Box verkraftet auch 15–30 s, rechnet die Seite aber jedes Mal neu. Minimum 15 s." /></span>
         </label>
+        {#if untested && !testing}
+          <div class="hint">Zugangsdaten geändert – bitte einmal <b>Verbindung testen</b>, damit die Messung später nicht an der Anmeldung scheitert.</div>
+        {/if}
         <div class="row">
-          <button on:click={test} disabled={testing}>{testing ? 'Teste …' : 'Verbindung testen'}</button>
+          <button class:primary={untested} on:click={test} disabled={testing}>{testing ? 'Teste …' : 'Verbindung testen'}</button>
           {#if testRes}
             {#if testRes.ok}
-              <span class="ok">✓ {testRes.model || 'FRITZ!Box'}: {testRes.ds} Downstream- / {testRes.us} Upstream-Kanäle, Leitungswerte {({ good: 'in Ordnung', warning: 'auffällig', critical: 'kritisch' })[testRes.status]}</span>
+              {#if testRes.status}
+                <span class="ok">✓ {testRes.model || 'FRITZ!Box'}: {testRes.ds} Downstream- / {testRes.us} Upstream-Kanäle, Leitungswerte {({ good: 'in Ordnung', warning: 'auffällig', critical: 'kritisch' })[testRes.status]}</span>
+              {:else}
+                <span class="ok">✓ {testRes.model || 'FRITZ!Box'}: Anmeldung erfolgreich (Leitungswerte für diese Anschlussart folgen in einer späteren Version)</span>
+              {/if}
             {:else}
               <span class="err">✗ {testRes.model ? testRes.model + ': ' : ''}{testRes.error}</span>
             {/if}
@@ -260,6 +279,7 @@
   .grow { flex: 1; }
   .err { color: var(--bad); }
   .ok { color: #2a9d8f; font-size: 12px; }
+  .hint { background: var(--warn-bg); border-left: 4px solid #e9a23b; padding: 6px 10px; font-size: 12px; border-radius: 4px; margin: 6px 0; }
   .row input.wide { width: 300px; }
   .disabled { opacity: 0.45; pointer-events: none; }
   .play { padding: 0 6px; font-size: 10px; margin-left: 4px; }

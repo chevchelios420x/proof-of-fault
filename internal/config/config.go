@@ -59,8 +59,9 @@ type Settings struct {
 	Sounds           Sounds           `json:"sounds"`
 	Zones            []ZoneDef        `json:"zones"`
 
-	// Access technology of the internet connection: "dsl", "docsis" or
-	// "fibre". Only DOCSIS adds checks so far (FRITZ!Box cable data).
+	// Access technology of the internet connection: "dsl", "docsis",
+	// "fibre" or "mobile" (LTE/5G). Only DOCSIS adds checks so far
+	// (FRITZ!Box cable data); the others are prepared.
 	Access string `json:"access"`
 	Fritz  Fritz  `json:"fritz"`
 }
@@ -173,7 +174,7 @@ func (s Settings) Normalize() Settings {
 	if s.Sounds.CooldownSec < 0 {
 		s.Sounds.CooldownSec = 0
 	}
-	if s.Access != "dsl" && s.Access != "docsis" && s.Access != "fibre" {
+	if s.Access != "dsl" && s.Access != "docsis" && s.Access != "fibre" && s.Access != "mobile" {
 		s.Access = "dsl"
 	}
 	if s.Fritz.URL == "" {

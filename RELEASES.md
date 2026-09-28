@@ -6,6 +6,16 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.18.1 – 2026-09-28
+
+- FRITZ!Box-Zugang: Adresse (IP oder Name), Benutzer und Kennwort sind in
+  ⚙ → „Anschluss & FRITZ!Box“ jederzeit änderbar; neu auch direkt über
+  „⚙ FRITZ!Box-Zugang ändern / testen“ auf der DOCSIS-Karte. Nach jeder Änderung
+  schlägt die App „Verbindung testen“ vor (Hinweis + hervorgehobener Button;
+  beim Speichern ohne Test wird nachgefragt).
+- Neue Anschlussart **LTE/5G** (vorbereitet). Für DSL, Glasfaser und LTE/5G
+  prüft „Verbindung testen“ bereits die Anmeldung an der FRITZ!Box.
+
 ## v0.18.0 – 2026-09-28
 
 - **Anschlussart** neben „Überwachung starten“: DSL · Kabel (DOCSIS) · Glasfaser.

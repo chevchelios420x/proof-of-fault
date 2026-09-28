@@ -98,7 +98,7 @@ type FritzTest struct {
 
 // TestFritz logs in and reads the DOCSIS data once. An empty password uses
 // the stored one.
-func (a *App) TestFritz(url, user, password string) FritzTest {
+func (a *App) TestFritz(url, user, password, access string) FritzTest {
 	if err := a.ready(); err != nil {
 		return FritzTest{Error: err.Error()}
 	}
@@ -112,6 +112,15 @@ func (a *App) TestFritz(url, user, password string) FritzTest {
 		return FritzTest{Error: "Bitte Adresse und Kennwort der FRITZ!Box eingeben."}
 	}
 	res := FritzTest{Model: c.Model()}
+	if access != "docsis" {
+		// DSL, fibre and LTE/5G have no line data yet: check the login only.
+		if err := c.Login(); err != nil {
+			res.Error = err.Error()
+			return res
+		}
+		res.OK = true
+		return res
+	}
 	s, err := c.Fetch()
 	if err != nil {
 		res.Error = err.Error()
