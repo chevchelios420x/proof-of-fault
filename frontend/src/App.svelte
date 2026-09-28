@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession, SetSessionNote, GetDocsis, TestFritz } from '../wailsjs/go/main/App.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession, SetSessionNote, GetDocsis, TestFritz, FritzDebug } from '../wailsjs/go/main/App.js'
   import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
@@ -554,7 +554,7 @@
 </main>
 
 {#if showSettings && settings}
-  <Settings {settings} onSave={saveSettings} onClose={() => (showSettings = false)} onDefaults={DefaultSettings} onPreviewTheme={applyTheme} onTest={TestFritz} />
+  <Settings {settings} onSave={saveSettings} onClose={() => (showSettings = false)} onDefaults={DefaultSettings} onPreviewTheme={applyTheme} onTest={TestFritz} onDebug={FritzDebug} />
 {/if}
 
 <style>

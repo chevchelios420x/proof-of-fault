@@ -7,6 +7,20 @@
   export let onDefaults = async () => settings
   export let onPreviewTheme = (t) => {}
   export let onTest = async (url, user, password) => ({})
+  export let onDebug = async (url, user, password) => ''
+
+  let debugging = false
+  let debugRes = ''
+  async function debugDump() {
+    if (!confirm('Debug-Daten der FRITZ!Box sammeln?\n\nDie App meldet sich an und liest alle bekannten Status-Seiten einmalig aus (nur lesend, an der Box wird nichts verändert). Das dauert ca. 10 Sekunden.\n\nDie ZIP-Datei kann persönliche Daten enthalten (Gerätenamen, MAC-/IP-Adressen, Telefonnummern aus dem Ereignisprotokoll). Session-ID und Kennwort-Felder werden entfernt. Nur an Personen weitergeben, denen du vertraust – nicht öffentlich posten.')) return
+    debugging = true
+    debugRes = ''
+    try {
+      const p = await onDebug(s.fritz.url, s.fritz.user, s.fritz.password || '')
+      debugRes = p ? '✓ gespeichert: ' + p : ''
+    } catch (e) { debugRes = '✗ ' + e }
+    debugging = false
+  }
 
   let testing = false
   let testRes = null
@@ -120,11 +134,16 @@
         <label class="row">DOCSIS-Werte abfragen alle … Sekunden
           <span><input type="number" min="15" max="3600" step="5" bind:value={s.fritz.intervalSec} /><Help align="right" text="Regelmäßige Abfrage zusätzlich zu den Abfragen bei Beginn und Ende jeder Störung. 60 s ist ein guter Wert; die FRITZ!Box verkraftet auch 15–30 s, rechnet die Seite aber jedes Mal neu. Minimum 15 s." /></span>
         </label>
+        {#if debugRes}<p class="small {debugRes.startsWith('✓') ? 'ok' : 'err'}">{debugRes}</p>{/if}
         {#if untested && !testing}
           <div class="hint">Zugangsdaten geändert – bitte einmal <b>Verbindung testen</b>, damit die Messung später nicht an der Anmeldung scheitert.</div>
         {/if}
         <div class="row">
-          <button class:primary={untested} on:click={test} disabled={testing}>{testing ? 'Teste …' : 'Verbindung testen'}</button>
+          <span class="btns">
+            <button class:primary={untested} on:click={test} disabled={testing}>{testing ? 'Teste …' : 'Verbindung testen'}</button>
+            <button on:click={debugDump} disabled={debugging}>{debugging ? 'Sammle …' : '🐞 Debug'}</button>
+            <Help align="right" text={'Sammelt einmalig alle bekannten Status-Seiten der FRITZ!Box (nur lesend) und speichert sie als ZIP – als Hilfe für die Entwicklung, z. B. für DSL-, Glasfaser- oder LTE/5G-Auswertung.\n\n⚠ Nicht weitergeben bzw. nur an vertraute Personen: Die Datei kann Gerätenamen, MAC-/IP-Adressen, Telefonnummern (Ereignisprotokoll) und Anschlussdaten enthalten. Session-ID und Kennwort-Felder werden automatisch entfernt.'} />
+          </span>
           {#if testRes}
             {#if testRes.ok}
               {#if testRes.status}
@@ -279,6 +298,8 @@
   .grow { flex: 1; }
   .err { color: var(--bad); }
   .ok { color: #2a9d8f; font-size: 12px; }
+  .btns { display: inline-flex; gap: 6px; align-items: center; }
+  .small { font-size: 12px; margin: 4px 0; word-break: break-all; }
   .hint { background: var(--warn-bg); border-left: 4px solid #e9a23b; padding: 6px 10px; font-size: 12px; border-radius: 4px; margin: 6px 0; }
   .row input.wide { width: 300px; }
   .disabled { opacity: 0.45; pointer-events: none; }

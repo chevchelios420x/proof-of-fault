@@ -1,7 +1,13 @@
 package docsis
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -50,5 +56,73 @@ func TestChallengeResponse(t *testing.T) {
 	md5, _ := challengeResponse("1234567z", "äbc")
 	if md5 != "1234567z-9e224a41eeefa284df7bb0f26c2913e2" {
 		t.Errorf("md5 response: %s", md5)
+	}
+}
+
+func TestRedact(t *testing.T) {
+	c := &Client{sid: "0123456789abcdef"}
+	in := []byte(`{"sid":"0123456789abcdef","wlan":{"psk":"geheim","name":"x"},"Password":"abc","url":"/x?sid=0123456789abcdef"}`)
+	out := string(c.redact(in))
+	for _, bad := range []string{"0123456789abcdef", "geheim", `"abc"`} {
+		if strings.Contains(out, bad) {
+			t.Errorf("not redacted %q in %s", bad, out)
+		}
+	}
+	if !strings.Contains(out, `"name":"x"`) {
+		t.Errorf("too much redacted: %s", out)
+	}
+}
+
+func TestDebugDumpAgainstFakeBox(t *testing.T) {
+	const sid = "fedcba9876543210"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/login_sid.lua" && r.URL.Query().Get("response") == "":
+			fmt.Fprint(w, `<SessionInfo><SID>0000000000000000</SID><Challenge>2$10000$5A1711$2000$5A1722</Challenge><BlockTime>0</BlockTime><Users><User last="1">admin</User></Users></SessionInfo>`)
+		case r.URL.Path == "/login_sid.lua":
+			if r.URL.Query().Get("response") != "5A1722$1798a1672bca7c6463d6b245f82b53703b0f50813401b03e4045a5861e689adb" {
+				fmt.Fprint(w, `<SessionInfo><SID>0000000000000000</SID></SessionInfo>`)
+				return
+			}
+			fmt.Fprint(w, `<SessionInfo><SID>`+sid+`</SID></SessionInfo>`)
+		case r.URL.Path == "/data.lua":
+			r.ParseForm()
+			if r.Form.Get("sid") != sid {
+				fmt.Fprint(w, `<html>login</html>`)
+				return
+			}
+			if r.Form.Get("page") == "docInfo" {
+				fmt.Fprint(w, `{"sid":"`+sid+`","data":`+sample+`}`)
+				return
+			}
+			fmt.Fprint(w, `{"data":{}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	debugPause = 0
+	c := NewClient(srv.URL, "", "1example!")
+	zb, err := c.DebugDump("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(zb), int64(len(zb)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		if strings.Contains(string(b), sid) {
+			t.Errorf("%s still contains the SID", f.Name)
+		}
+	}
+	for _, want := range []string{"manifest.json", "data.lua/docInfo.json", "parsed/docsis.json"} {
+		if !names[want] {
+			t.Errorf("missing %s (have %v)", want, names)
+		}
 	}
 }

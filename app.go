@@ -130,6 +130,36 @@ func (a *App) TestFritz(url, user, password, access string) FritzTest {
 	return res
 }
 
+// FritzDebug reads all known FRITZ!Box pages once (read-only), redacts
+// session ID and password fields and saves them as ZIP. Returns the path
+// ("" if the dialog was cancelled). An empty password uses the stored one.
+func (a *App) FritzDebug(url, user, password string) (string, error) {
+	if err := a.ready(); err != nil {
+		return "", err
+	}
+	cfg := a.monitor.Settings()
+	cfg.Fritz.URL, cfg.Fritz.User = url, user
+	if password != "" {
+		cfg.Fritz.Password = secret.Protect(password)
+	}
+	c := monitor.FritzClient(cfg)
+	if c == nil {
+		return "", fmt.Errorf("bitte Adresse und Kennwort der FRITZ!Box eingeben")
+	}
+	zb, err := c.DebugDump("v" + Version)
+	if err != nil {
+		return "", err
+	}
+	dst, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		DefaultFilename: "fritzbox-debug_" + time.Now().Format("2006-01-02_1504") + ".zip",
+		Filters:         []runtime.FileFilter{{DisplayName: "ZIP-Archiv (*.zip)", Pattern: "*.zip"}},
+	})
+	if err != nil || dst == "" {
+		return "", err
+	}
+	return dst, os.WriteFile(dst, zb, 0o600)
+}
+
 // GetDocsis returns all DOCSIS readings of a session.
 func (a *App) GetDocsis(id int64) ([]json.RawMessage, error) {
 	if err := a.ready(); err != nil {

@@ -6,6 +6,17 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.20.0 – 2026-09-28
+
+- **FRITZ!Box-Debug-Export** (⚙ → Anschluss & FRITZ!Box → „🐞 Debug“): meldet
+  sich einmalig an, liest alle bekannten `data.lua`-Statusseiten (Übersicht,
+  Internet, DOCSIS, DSL, Glasfaser, LTE/5G, Heimnetz, Ereignisse …) sowie die
+  Gerätebeschreibungen **nur lesend** aus und speichert sie mit einem Manifest
+  als ZIP. Session-ID und Kennwort-Felder werden entfernt. Tooltip und
+  Rückfrage weisen darauf hin, dass die Datei persönliche Daten enthalten kann
+  und nicht öffentlich weitergegeben werden sollte. Dient als Grundlage für die
+  DSL-, Glasfaser- und LTE/5G-Auswertung.
+
 ## v0.19.0 – 2026-09-28
 
 - **DOCSIS-Verlauf als Diagramme** (live und im Verlauf), vier kleine Diagramme:
