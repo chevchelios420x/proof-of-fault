@@ -3,6 +3,7 @@
   import uPlot from 'uplot'
   import Help from './Help.svelte'
   import { DEFAULT_ZONES, groupBy } from './zones.js'
+  import { slice } from './timeline.js'
 
   export let timeline
   export let series = [] // [{key, label, color, group, dash}] in route order
@@ -31,10 +32,10 @@
 
   // Auto: logarithmic once the data spans roughly 1 ms … 1000 ms, so
   // single spikes do not flatten all normal values.
-  function wantLog() {
+  function wantLog(d) {
     if (scaleMode !== 'auto') return scaleMode === 'log'
     let min = Infinity, max = 0
-    for (const k of keys) for (const v of timeline.ys[k] || []) if (v > 0) { if (v < min) min = v; if (v > max) max = v }
+    for (let c = 1; c < d.length; c++) for (const v of d[c]) if (v > 0) { if (v < min) min = v; if (v > max) max = v }
     if (logActive) return max >= 50 // hysteresis: stay logarithmic
     return max >= 100 && max / min >= 50
   }
@@ -88,7 +89,8 @@
 
   function build() {
     plot?.destroy()
-    logActive = wantLog()
+    const d = rawData()
+    logActive = wantLog(d)
     builtFor = signature
     const opts = {
       width: el.clientWidth,
@@ -120,38 +122,45 @@
       ],
       cursor: { drag: { x: true, y: false } },
       hooks: {
-        setSelect: [(u) => { if (u.select.width > 0) zoomed = true }],
+        // After a drag zoom reload the range in full resolution.
+        setSelect: [(u) => { if (u.select.width > 0) { zoomed = true; setTimeout(reload) } }],
       },
     }
-    plot = new uPlot(opts, data(), el)
-    applyWindow()
+    plot = new uPlot(opts, lift(d), el)
+  }
+
+  // rawData returns only what is visible: the zoomed range, the live window
+  // or the whole session – thinned out for long ranges. Handing uPlot the
+  // complete session every second made the GUI stutter or hang.
+  function rawData() {
+    if (zoomed && plot) {
+      const { min, max } = plot.scales.x
+      if (min != null && max != null) return slice(timeline, keys, Math.floor(min), Math.ceil(max))
+    }
+    const xs = timeline.xs
+    if (live && windowMin > 0 && xs.length) return slice(timeline, keys, xs[xs.length - 1] - windowMin * 60, null)
+    return slice(timeline, keys, null, null)
   }
 
   // Log scale cannot show 0 ms; tiny values are lifted to 0.1 ms.
-  function data() {
-    const d = timeline.data(keys)
+  function lift(d) {
     if (!logActive) return d
     return d.map((arr, i) => (i === 0 ? arr : arr.map((v) => (v != null && v <= 0.1 ? 0.1 : v))))
   }
 
   function refresh() {
     if (!plot || (live && paused)) return
-    if (wantLog() !== logActive) return build()
-    const win = live && windowMin > 0 && !zoomed
-    plot.setData(data(), !zoomed && !win)
-    applyWindow()
+    const d = rawData()
+    if (wantLog(d) !== logActive) return build()
+    plot.setData(lift(d), !zoomed)
   }
 
-  // In live mode show only the last windowMin minutes (unless zoomed).
-  function applyWindow() {
-    if (!plot || !live || zoomed || !(windowMin > 0)) return
-    const xs = plot.data[0]
-    if (!xs.length) return
-    const max = xs[xs.length - 1]
-    plot.setScale('x', { min: max - windowMin * 60, max })
+  function reload() {
+    if (plot) plot.setData(lift(rawData()), !zoomed)
   }
+
   let lastWindow = windowMin
-  $: if (windowMin !== lastWindow) { lastWindow = windowMin; zoomed = false; if (plot) { plot.setData(data(), true); applyWindow() } }
+  $: if (windowMin !== lastWindow) { lastWindow = windowMin; zoomed = false; reload() }
 
   function toggle(k) {
     const show = hidden.has(k)
@@ -212,6 +221,7 @@
   export function zoomTo(fromMs, toMs) {
     if (!plot) return
     zoomed = true
+    plot.setData(lift(slice(timeline, keys, Math.floor(fromMs / 1000), Math.ceil(toMs / 1000))), false)
     plot.setScale('x', { min: fromMs / 1000, max: toMs / 1000 })
   }
 
