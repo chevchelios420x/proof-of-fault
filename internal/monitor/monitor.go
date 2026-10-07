@@ -526,6 +526,8 @@ func (r *runner) loop(ctx context.Context) error {
 	rediscoverEvery := time.Duration(r.cfg.RediscoverMin) * time.Minute
 	rediscover := time.NewTicker(rediscoverEvery)
 	defer rediscover.Stop()
+	echoCheck := time.NewTicker(time.Minute)
+	defer echoCheck.Stop()
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -551,6 +553,8 @@ func (r *runner) loop(ctx context.Context) error {
 			r.flushLive()
 		case <-rediscover.C:
 			r.rediscover()
+		case <-echoCheck.C:
+			r.recheckEcho()
 		case hops := <-r.pathUpdates:
 			r.updatePath(ctx, hops)
 		case f := <-r.m.cmds:
@@ -564,6 +568,38 @@ func (r *runner) loop(ctx context.Context) error {
 		case res := <-r.docsisRes:
 			r.handleDocsis(res)
 		}
+	}
+}
+
+// recheckEcho tests again whether measuring points that are measured with
+// TTL-limited probes answer a normal ping by now. Routers answer "TTL
+// expired" only with low priority and rate-limited, so such probes show
+// losses that a normal ping (e.g. Windows ping.exe) does not have. The check
+// at route discovery can fail during a disturbance and then stuck for good.
+func (r *runner) recheckEcho() {
+	for _, rep := range r.reps {
+		if rep.Direct || rep.Zone == path.WAN {
+			continue
+		}
+		a, zone := rep.Addr, rep.Zone
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			if !path.AnswersEcho(r.ctx, r.m.prober, a) {
+				return
+			}
+			r.m.send(func(r *runner) {
+				for i := range r.reps {
+					if r.reps[i].Addr == a && r.reps[i].Zone == zone && !r.reps[i].Direct {
+						r.reps[i].Direct = true
+						r.logEvent(store.Event{Kind: KindPath, Severity: "info", Zone: string(zone),
+							Title: "Messpunkt " + a.String() + " wird jetzt direkt angepingt",
+							Detail: "Er antwortet auf normale Pings. Bisher wurde er über TTL-begrenzte Pakete gemessen; " +
+								"darauf antworten Router oft nur gedrosselt, was als Verlust erscheint."})
+					}
+				}
+			})
+		}()
 	}
 }
 

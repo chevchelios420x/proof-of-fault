@@ -6,6 +6,14 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.20.2 – 2026-10-07
+
+- Anbieter-/Heimnetz-Messpunkt, der beim Routen-Ermitteln nicht auf Ping
+  antwortete, wurde dauerhaft über TTL-begrenzte Pakete gemessen. Router
+  beantworten diese gedrosselt → Scheinverluste, obwohl `ping` funktioniert.
+  Jetzt wird jede Minute neu geprüft und bei Antwort auf direkten Ping
+  umgestellt (Eintrag im Ereignisprotokoll).
+
 ## v0.20.1 – 2026-09-29
 
 - Live-Diagramm ruckelt/hängt nicht mehr bei 30/60/90 min oder langer Messung:
