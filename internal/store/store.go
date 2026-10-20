@@ -752,3 +752,78 @@ func (s *Store) DocsisSnapshots(sid int64) ([]json.RawMessage, error) {
 	}
 	return out, rows.Err()
 }
+
+// SessionsBetween returns the sessions that overlap [from, to) (unix ms),
+// oldest first.
+func (s *Store) SessionsBetween(from, to int64) ([]SessionInfo, error) {
+	all, err := s.Sessions()
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	var out []SessionInfo
+	for i := len(all) - 1; i >= 0; i-- {
+		x := all[i]
+		end := x.EndedAt
+		if end == 0 {
+			end = now
+		}
+		if x.StartedAt < to && end >= from {
+			out = append(out, x)
+		}
+	}
+	return out, nil
+}
+
+// ZoneCounts returns the number of probes and losses of a zone of a session
+// within [from, to) (unix ms).
+func (s *Store) ZoneCounts(sid int64, zone string, from, to int64) (sent, lost int, err error) {
+	s.flush()
+	err = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(rtt_us IS NULL),0) FROM sample WHERE session_id=? AND zone=? AND ts_ns>=? AND ts_ns<?`,
+		sid, zone, from*1e6, to*1e6).Scan(&sent, &lost)
+	return
+}
+
+// EachRTT calls fn with every answered probe (RTT in µs) of a zone of a
+// session within [from, to) (unix ms).
+func (s *Store) EachRTT(sid int64, zone string, from, to int64, fn func(us int64)) error {
+	rows, err := s.db.Query(`SELECT rtt_us FROM sample WHERE session_id=? AND zone=? AND ts_ns>=? AND ts_ns<? AND rtt_us IS NOT NULL`,
+		sid, zone, from*1e6, to*1e6)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			return err
+		}
+		fn(v)
+	}
+	return rows.Err()
+}
+
+// SamplesSince returns the samples of a session from t (unix ms) on.
+func (s *Store) SamplesSince(id int64, t int64) ([]Sample, error) {
+	s.flush()
+	rows, err := s.db.Query(`SELECT zone, ts_ns, rtt_us FROM sample WHERE session_id=? AND ts_ns>=? ORDER BY ts_ns`, id, t*1e6)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Sample
+	for rows.Next() {
+		var zone string
+		var ts int64
+		var rtt sql.NullInt64
+		if err := rows.Scan(&zone, &ts, &rtt); err != nil {
+			return nil, err
+		}
+		x := Sample{SessionID: id, Zone: zone, At: time.Unix(0, ts), RTT: -1}
+		if rtt.Valid {
+			x.RTT = time.Duration(rtt.Int64) * time.Microsecond
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}

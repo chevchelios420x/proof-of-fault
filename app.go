@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/chevchelios420x/proof-of-fault/internal/config"
 	"github.com/chevchelios420x/proof-of-fault/internal/monitor"
@@ -25,9 +23,10 @@ type App struct {
 	store   *store.Store
 	monitor *monitor.Monitor
 	initErr error
+	emit    func(ev string, data any) // to all connected browsers
 }
 
-func NewApp() *App { return &App{} }
+func NewApp(emit func(ev string, data any)) *App { return &App{emit: emit} }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
@@ -47,7 +46,7 @@ func (a *App) startup(ctx context.Context) {
 		a.initErr = err
 		return
 	}
-	a.monitor = monitor.New(p, st, func(ev string, data any) { runtime.EventsEmit(ctx, ev, data) })
+	a.monitor = monitor.New(p, st, a.emit)
 
 	cfg := a.monitor.Settings()
 	if cfg.RetentionDays > 0 {
@@ -130,12 +129,12 @@ func (a *App) TestFritz(url, user, password, access string) FritzTest {
 	return res
 }
 
-// FritzDebug reads all known FRITZ!Box pages once (read-only), redacts
-// session ID and password fields and saves them as ZIP. Returns the path
-// ("" if the dialog was cancelled). An empty password uses the stored one.
-func (a *App) FritzDebug(url, user, password string) (string, error) {
+// fritzDebug reads all known FRITZ!Box pages once (read-only) and returns
+// them as ZIP with session ID and password fields redacted. An empty
+// password uses the stored one.
+func (a *App) fritzDebug(url, user, password string) ([]byte, error) {
 	if err := a.ready(); err != nil {
-		return "", err
+		return nil, err
 	}
 	cfg := a.monitor.Settings()
 	cfg.Fritz.URL, cfg.Fritz.User = url, user
@@ -144,20 +143,9 @@ func (a *App) FritzDebug(url, user, password string) (string, error) {
 	}
 	c := monitor.FritzClient(cfg)
 	if c == nil {
-		return "", fmt.Errorf("bitte Adresse und Kennwort der FRITZ!Box eingeben")
+		return nil, fmt.Errorf("bitte Adresse und Kennwort der FRITZ!Box eingeben")
 	}
-	zb, err := c.DebugDump("v" + Version)
-	if err != nil {
-		return "", err
-	}
-	dst, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		DefaultFilename: "fritzbox-debug_" + time.Now().Format("2006-01-02_1504") + ".zip",
-		Filters:         []runtime.FileFilter{{DisplayName: "ZIP-Archiv (*.zip)", Pattern: "*.zip"}},
-	})
-	if err != nil || dst == "" {
-		return "", err
-	}
-	return dst, os.WriteFile(dst, zb, 0o600)
+	return c.DebugDump("v" + Version)
 }
 
 // GetDocsis returns all DOCSIS readings of a session.
@@ -319,49 +307,94 @@ func (a *App) GetSession(id int64) (SessionData, error) {
 	return SessionData{Report: r, Series: s}, err
 }
 
-// Export writes the session as "csv" or "html" to a user-chosen file and
-// returns the path ("" if cancelled).
-func (a *App) Export(id int64, format string) (string, error) {
-	if err := a.ready(); err != nil {
+// exportName returns the download file name of an export.
+func (a *App) exportName(id int64, format string) (string, error) {
+	info, err := a.store.Session(id)
+	if err != nil {
 		return "", err
+	}
+	base := fmt.Sprintf("proof-of-fault_%d_%s", id, time.UnixMilli(info.StartedAt).Format("2006-01-02_1504"))
+	switch format {
+	case "html", "csv":
+		return base + "." + format, nil
+	case "events":
+		return base + "_ereignisse.csv", nil
+	case "pof":
+		return base + ".pof", nil
+	}
+	return "", fmt.Errorf("unbekanntes Format %q", format)
+}
+
+// export writes a session as "html" report, "csv" samples, "events" CSV or
+// "pof" (complete, importable export).
+func (a *App) export(w io.Writer, id int64, format string) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	if format == "pof" {
+		return a.store.ExportSession(w, id, "proof-of-fault v"+Version)
 	}
 	r, series, samples, err := report.Build(a.store, id)
 	if err != nil {
-		return "", err
+		return err
 	}
-	name := fmt.Sprintf("proof-of-fault_%d_%s.%s", id, time.UnixMilli(r.Session.StartedAt).Format("2006-01-02_1504"), format)
-	ext := format
-	if format == "events" {
-		ext = "csv"
-		name = fmt.Sprintf("proof-of-fault_%d_%s_ereignisse.csv", id, time.UnixMilli(r.Session.StartedAt).Format("2006-01-02_1504"))
-	}
-	filter := runtime.FileFilter{DisplayName: "HTML-Bericht (*.html)", Pattern: "*.html"}
-	if ext == "csv" {
-		filter = runtime.FileFilter{DisplayName: "CSV (*.csv)", Pattern: "*.csv"}
-	}
-	dst, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		DefaultFilename: name, Filters: []runtime.FileFilter{filter},
-	})
-	if err != nil || dst == "" {
-		return "", err
-	}
-	f, err := os.Create(dst)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
 	switch format {
 	case "csv":
-		err = report.WriteCSV(f, samples)
+		return report.WriteCSV(w, samples)
 	case "events":
-		err = report.WriteEventsCSV(f, r.Events)
+		return report.WriteEventsCSV(w, r.Events)
 	case "html":
-		err = report.WriteHTML(f, r, series)
-	default:
-		err = fmt.Errorf("unbekanntes Format %q", format)
+		return report.WriteHTML(w, r, series)
 	}
+	return fmt.Errorf("unbekanntes Format %q", format)
+}
+
+// importSession stores an export file as new session and returns its ID.
+func (a *App) importSession(r io.ReaderAt, size int64) (int64, error) {
+	if err := a.ready(); err != nil {
+		return 0, err
+	}
+	return a.store.ImportSession(r, size)
+}
+
+// periodReport writes the report over 24 hours, 7, 30 and 90 days.
+func (a *App) periodReport(w io.Writer) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	r, err := report.BuildPeriods(a.store, time.Now(), report.PeriodDays, "v"+Version)
 	if err != nil {
-		return "", err
+		return err
 	}
-	return dst, f.Close()
+	return report.WritePeriodHTML(w, r)
+}
+
+// LivePoint is one sample for the live chart.
+type LivePoint struct {
+	Zone  string  `json:"zone"`
+	T     int64   `json:"t"`     // unix ms
+	RTTMs float64 `json:"rttMs"` // -1 = loss
+}
+
+// GetRecent returns the samples of the last minutes of a session, so a
+// browser that connects later can fill the live chart.
+func (a *App) GetRecent(id int64, minutes int) ([]LivePoint, error) {
+	if err := a.ready(); err != nil {
+		return nil, err
+	}
+	if minutes <= 0 || minutes > 24*60 {
+		minutes = 90
+	}
+	ss, err := a.store.SamplesSince(id, time.Now().Add(-time.Duration(minutes)*time.Minute).UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]LivePoint, len(ss))
+	for i, s := range ss {
+		out[i] = LivePoint{Zone: s.Zone, T: s.At.UnixMilli(), RTTMs: -1}
+		if s.RTT >= 0 {
+			out[i].RTTMs = float64(s.RTT) / float64(time.Millisecond)
+		}
+	}
+	return out, nil
 }

@@ -1,7 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession, SetSessionNote, GetDocsis, TestFritz, FritzDebug } from '../wailsjs/go/main/App.js'
-  import { EventsOn } from '../wailsjs/runtime/runtime.js'
+  import { StartMonitoring, StopMonitoring, GetStatus, ListSessions, GetSession, Export, SetHopWatched, SetHopZone, SetHopName, GetVersion, GetLive, GetRecent, SaveCustomPoint, DeleteCustomPoint, AddSuggestedPoints, GetSettings, SaveSettings, DefaultSettings, DeleteSession, SetSessionNote, GetDocsis, TestFritz, FritzDebug, ImportSession, PeriodReportURL, EventsOn, Login, Logout, CheckAuth, setUnauthHandler, setReconnectHandler } from './api.js'
   import Chart from './Chart.svelte'
   import EventLog from './EventLog.svelte'
   import Diagnosis from './Diagnosis.svelte'
@@ -179,7 +178,62 @@
     try { await SetHopZone(addr, zone === 'auto' ? '' : zone) } catch (e) { error = String(e) }
   }
 
+  // Login with the access key (UUID). The service opens the browser with
+  // "#key=<UUID>" so the local user is logged in directly.
+  let authed = null // null = checking
+  let loginKey = ''
+  let loginError = ''
+  let loginBusy = false
+  setUnauthHandler(() => (authed = false))
+  async function doLogin(key) {
+    loginBusy = true
+    loginError = ''
+    try {
+      await Login(key.trim())
+      authed = true
+      init()
+    } catch (e) { loginError = String(e) }
+    loginBusy = false
+  }
+  async function logout() {
+    await Logout()
+    location.reload()
+  }
+
+  async function keyFromHash() {
+    const m = /[#&]key=([0-9a-fA-F-]{36})/.exec(location.hash)
+    if (!m) return
+    history.replaceState(null, '', location.pathname) // key out of the address bar / history
+    try { await Login(m[1]); authed = true } catch (e) { loginError = String(e) }
+  }
+
   onMount(async () => {
+    await keyFromHash()
+    if (!authed) authed = await CheckAuth()
+    if (authed) init()
+    // Link with key pasted into an open tab.
+    window.addEventListener('hashchange', async () => {
+      await keyFromHash()
+      if (authed) init()
+    })
+  })
+
+  // Fills the live chart with the recent samples of the running session
+  // (the service measures on while no browser is open).
+  async function loadRecent() {
+    if (!status.sessionId) return
+    try {
+      const pts = (await GetRecent(status.sessionId, 90)) || []
+      live.reset()
+      for (const p of pts) live.add(p.zone, p.t, p.rttMs)
+      liveVersion++
+    } catch {}
+  }
+
+  let initDone = false
+  async function init() {
+    if (initDone) return
+    initDone = true
     version = await GetVersion()
     try {
       settings = await GetSettings()
@@ -198,7 +252,20 @@
     }
     if (status.target) target = status.target
     if (status.state === 'error') error = status.message
+    await loadRecent()
+    setReconnectHandler(async () => {
+      // Service restarted or connection lost: catch up.
+      try { status = await GetStatus() } catch {}
+      await loadRecent()
+      refreshDiag()
+    })
     EventsOn('status', (s) => {
+      if (s.sessionId && s.sessionId !== status.sessionId) {
+        // New measurement (also when started from another browser).
+        live.reset(); liveVersion++
+        stats = {}; outages = []; activeOutage = null; liveEvents = []; liveDiag = null; liveIncidents = []; realLoss = {}; liveNote = ''; liveDocsis = []
+        startedAt = Date.now()
+      }
       status = s
       if (s.state === 'error') error = s.message
     })
@@ -233,7 +300,7 @@
       }
     })
     setInterval(() => (now = Date.now()), 1000)
-  })
+  }
 
   async function start() {
     error = ''
@@ -266,19 +333,46 @@
   async function doExport(fmt) {
     try {
       const p = await Export(selected, fmt)
-      exportMsg = p ? `Gespeichert: ${p}` : ''
+      exportMsg = p ? `Heruntergeladen: ${p}` : ''
     } catch (e) { exportMsg = 'Fehler: ' + e }
+  }
+
+  let importMsg = ''
+  async function importFile(e) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    importMsg = `Importiere ${f.name} …`
+    try {
+      const id = await ImportSession(f)
+      importMsg = `✓ ${f.name} als Messung #${id} importiert`
+      sessions = (await ListSessions()) || []
+      await select(id)
+    } catch (err) { importMsg = '✗ ' + err }
   }
 
   const fmt = (v, d = 1) => (v === undefined || v === null ? '–' : Number(v).toFixed(d))
 </script>
 
+{#if authed === false}
+  <div class="login">
+    <form class="card" on:submit|preventDefault={() => doLogin(loginKey)}>
+      <h1>proof-of-fault</h1>
+      <p>Bitte den <b>Zugangsschlüssel</b> eingeben.<Help align="left" text={HELP.loginKey} /></p>
+      <!-- svelte-ignore a11y-autofocus -->
+      <input bind:value={loginKey} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autofocus autocomplete="current-password" spellcheck="false" />
+      <button class="primary" disabled={loginBusy || !loginKey.trim()}>Anmelden</button>
+      {#if loginError}<p class="err">{loginError}</p>{/if}
+    </form>
+  </div>
+{:else if authed}
 <header>
   <h1>proof-of-fault <span class="ver">{version}</span></h1>
   <nav>
     <button class="gear" title="Einstellungen" on:click={() => (showSettings = true)} disabled={!settings}>⚙</button>
     <button class:active={tab === 'live'} on:click={() => (tab = 'live')}>Messung</button>
     <button class:active={tab === 'history'} on:click={openHistory}>Verlauf &amp; Berichte</button>
+    <button class="logout" title="Abmelden (Zugangsschlüssel wird beim nächsten Mal wieder abgefragt)" on:click={logout}>⏻</button>
   </nav>
 </header>
 
@@ -480,7 +574,20 @@
   {:else}
     <div class="history">
       <aside class="card">
+        <div class="proof">
+          <b>Nachweis für Anbieter / Bundesnetzagentur</b><Help align="left" text={HELP.periodReport} />
+          <small>alle Messungen der letzten 24 Stunden, 7, 30 und 90 Tage</small>
+          <span>
+            <a class="btn primary" href={PeriodReportURL(false)} target="_blank" rel="noopener">Bericht öffnen</a>
+            <a class="btn" href={PeriodReportURL(true)}>Herunterladen</a>
+          </span>
+        </div>
         <h2>Sitzungen<Help align="left" text={HELP.sessions} /></h2>
+        <label class="btn import" title="Export-Datei (.pof) einer Messung einlesen – auch von einem anderen Rechner oder Betriebssystem">
+          ⤓ Messung importieren (.pof)
+          <input type="file" accept=".pof,application/zip" on:change={importFile} hidden />
+        </label>
+        {#if importMsg}<p class="muted small">{importMsg}</p>{/if}
         {#each sessions as s}
           <button class="session" class:active={s.id === selected} on:click={() => select(s.id)}>
             #{s.id} {s.target}<br /><small>{fmtTime(s.startedAt)}</small>
@@ -498,6 +605,7 @@
                 <button on:click={() => doExport('html')}>Bericht (HTML/PDF)</button><Help text={HELP.exportHtml} />
                 <button on:click={() => doExport('csv')}>Rohdaten (CSV)</button><Help text={HELP.exportCsv} />
                 <button on:click={() => doExport('events')}>Ereignisse (CSV)</button>
+                <button on:click={() => doExport('pof')}>Export (.pof)</button><Help text={HELP.exportPof} />
                 <button class="del-session" title="Diese Messung löschen" on:click={() => removeSession(r.session.id)}>🗑</button><Help align="right" text={HELP.exportEvents} />
               </span>
             </div>
@@ -556,6 +664,7 @@
 {#if showSettings && settings}
   <Settings {settings} onSave={saveSettings} onClose={() => (showSettings = false)} onDefaults={DefaultSettings} onPreviewTheme={applyTheme} onTest={TestFritz} onDebug={FritzDebug} />
 {/if}
+{/if}
 
 <style>
   header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: #1f2a44; color: #fff; }
@@ -595,6 +704,18 @@
   .bad { color: var(--bad); font-weight: 600; }
   .muted { color: var(--muted); }
   .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+  .login form { display: flex; flex-direction: column; gap: 10px; width: min(420px, 100%); }
+  .login h1 { margin: 0; }
+  .login input { font-family: monospace; }
+  .login .err { color: #d62828; margin: 0; }
+  .logout { margin-left: 8px; }
+  .proof { display: flex; flex-direction: column; gap: 4px; padding: 10px; margin-bottom: 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--sel-bg); }
+  .proof span { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .btn { display: inline-block; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; color: var(--fg); background: var(--card); font-size: 13px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .import { display: block; text-align: center; margin-bottom: 8px; }
+  .small { font-size: 12px; }
   .history { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; align-items: start; }
   .session { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
   .session.active { border-color: var(--accent); background: var(--sel-bg); }

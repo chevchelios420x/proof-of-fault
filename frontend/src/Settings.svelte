@@ -17,7 +17,7 @@
     debugRes = ''
     try {
       const p = await onDebug(s.fritz.url, s.fritz.user, s.fritz.password || '')
-      debugRes = p ? '✓ gespeichert: ' + p : ''
+      debugRes = p ? '✓ heruntergeladen: ' + p : ''
     } catch (e) { debugRes = '✗ ' + e }
     debugging = false
   }
@@ -34,6 +34,7 @@
   }
 
   let s = JSON.parse(JSON.stringify(settings))
+  s.contract = s.contract || {}
   // Changed FRITZ!Box access (address, user, password) should be tested.
   $: accessKey = [s.fritz.url, s.fritz.user, s.fritz.password || '', s.fritz.hasPassword].join('\u0001')
   const origKey = [settings.fritz?.url, settings.fritz?.user, '', settings.fritz?.hasPassword].join('\u0001')
@@ -109,7 +110,7 @@
 
       <section>
         <h3>Anschluss &amp; FRITZ!Box
-          <Help align="left" text={'Bei Kabelanschluss (DOCSIS) liest die App die Leitungswerte der FRITZ!Box: Downstream-/Upstream-Pegel, SNR/MER und die Zähler für korrigierbare und nicht korrigierbare Fehler. Dafür braucht sie einen FRITZ!Box-Benutzer (am besten ein eigener Benutzer mit dem Recht „FRITZ!Box Einstellungen“). Das Kennwort wird mit Windows-Datenschutz (DPAPI) verschlüsselt gespeichert und nie angezeigt. DSL- und Glasfaser-Auswertung sind vorbereitet.'} />
+          <Help align="left" text={'Bei Kabelanschluss (DOCSIS) liest die App die Leitungswerte der FRITZ!Box: Downstream-/Upstream-Pegel, SNR/MER und die Zähler für korrigierbare und nicht korrigierbare Fehler. Dafür braucht sie einen FRITZ!Box-Benutzer (am besten ein eigener Benutzer mit dem Recht „FRITZ!Box Einstellungen“). Das Kennwort wird verschlüsselt gespeichert (Windows: DPAPI, Linux: AES mit eigener Schlüsseldatei) und nie angezeigt. DSL- und Glasfaser-Auswertung sind vorbereitet.'} />
         </h3>
         <label class="row">Anschlussart
           <select bind:value={s.access}>
@@ -258,11 +259,24 @@
       </section>
 
       <section>
+        <h3>Vertrag &amp; Nachweis
+          <Help align="left" text={'Diese Angaben erscheinen im Nachweis-Bericht (Verlauf & Berichte → „Nachweis für Anbieter / Bundesnetzagentur“). Alles optional. Wichtig für Ansprüche ist vor allem die Störungsmeldung beim Anbieter: Datum, Ticketnummer und Antwort hier notieren.'} />
+        </h3>
+        <label class="row">Anschlussinhaber<input class="wide" bind:value={s.contract.name} placeholder="Vor- und Nachname" /></label>
+        <label class="row">Anschlussadresse<input class="wide" bind:value={s.contract.address} placeholder="Straße, PLZ Ort" /></label>
+        <label class="row">Anbieter<input class="wide" bind:value={s.contract.provider} placeholder="z. B. Vodafone" /></label>
+        <label class="row">Kunden-/Vertragsnummer<input class="wide" bind:value={s.contract.customerNo} /></label>
+        <label class="row">Tarif / vereinbarte Leistung<input class="wide" bind:value={s.contract.tariff} placeholder="z. B. GigaZuhause 1000 Kabel, 1000/50 Mbit/s" /></label>
+        <label class="col">Störungsmeldungen an den Anbieter (je Zeile: Datum, Ticketnummer, Antwort)
+          <textarea rows="3" bind:value={s.contract.tickets} placeholder="z. B. 03.10.2026 telefonisch, Ticket 12345678, Techniker zugesagt"></textarea></label>
+      </section>
+
+      <section>
         <h3>Komfort</h3>
         <label class="check"><input type="checkbox" bind:checked={s.preventSleep} /> Standby verhindern, solange gemessen wird
           <Help align="left" text="Hält den PC während einer Messung wach (der Bildschirm darf trotzdem ausgehen). Sonst unterbricht der Energiesparmodus die Messung und es entstehen Lücken im Nachweis." /></label>
-        <label class="check"><input type="checkbox" bind:checked={s.autoStart} /> Beim Start der App die letzte Messung automatisch fortsetzen
-          <Help align="left" text={'Startet beim Öffnen der App sofort eine neue Messung zum zuletzt verwendeten Ziel' + (s.lastTarget ? ' (' + s.lastTarget + ')' : '') + '. Praktisch zusammen mit einer Verknüpfung im Autostart-Ordner von Windows.'} /></label>
+        <label class="check"><input type="checkbox" bind:checked={s.autoStart} /> Nach einem Neustart des Dienstes die letzte Messung automatisch fortsetzen
+          <Help align="left" text={'Der Dienst läuft im Hintergrund weiter, auch wenn kein Browser offen ist. Mit dieser Option startet er nach einem Neustart (PC/VM, Update) sofort wieder eine Messung zum zuletzt verwendeten Ziel' + (s.lastTarget ? ' (' + s.lastTarget + ')' : '') + ' – empfohlen für lückenlose Nachweise.'} /></label>
         <label class="row">Alte Messungen automatisch löschen nach … Tagen
           <span><input type="number" min="0" bind:value={s.retentionDays} /><Help align="right" text="Beendete Messungen, die älter sind, werden beim Start der App gelöscht, damit die Datenbank nicht unbegrenzt wächst. 0 = nie löschen." /></span>
         </label>
@@ -290,6 +304,8 @@
   h3 { font-size: 13px; margin: 0 0 8px; color: var(--fg); }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; margin: 6px 0; }
   .row input { width: 90px; }
+  .col { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin: 6px 0; }
+  .col textarea { width: 100%; box-sizing: border-box; font: inherit; }
   .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; }
   .grid input { width: 90px; }
   .grid td, .grid th { border: none; padding: 3px 6px; }

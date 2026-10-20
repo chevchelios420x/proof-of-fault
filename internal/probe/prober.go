@@ -60,3 +60,6 @@ var ErrUnsupported = errors.New("probe: platform not supported yet")
 
 // New returns the best unprivileged prober for the current platform.
 func New() (Prober, error) { return newProber() }
+
+// payload is the data of every echo request (32 bytes like Windows ping).
+var payload = []byte("proof-of-fault--probe-payload-32")

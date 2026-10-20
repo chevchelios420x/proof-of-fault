@@ -6,6 +6,37 @@ Fehlerbehebungen PATCH. Die Version steht in `VERSION`; die Windows-EXE liegt al
 `build/bin/proof-of-fault-vX.Y.Z.exe` im Repo und wird mit
 `scripts/build-windows.sh` gebaut.
 
+## v0.21.0 – 2026-10-20
+
+- **Weboberfläche statt Desktop-Fenster, für Windows und Linux gleich.** Das Programm
+  läuft als Hintergrunddienst und wird im Browser bedient, auch von einem anderen
+  Rechner oder dem Handy aus.
+  - Beim ersten Start richtet es sich ohne Administratorrechte ein:
+    - Windows: Autostart bei der Anmeldung, nur lokal unter `http://127.0.0.1:8443`.
+    - Linux: systemd-Benutzerdienst mit Linger, HTTPS auf Port 8443.
+  - Zugang mit einem beim ersten Start erzeugten Zugangsschlüssel (UUID). Der lokale
+    Doppelklick öffnet den Browser direkt angemeldet.
+  - Befehle: `status`, `install`, `uninstall`, `new-key`, `run`.
+- **Linux-Version (Ubuntu)** für eine kleine VM, die rund um die Uhr misst.
+  Ping und Traceroute laufen ohne root über die Ping-Sockets von Linux. Das
+  FRITZ!Box-Kennwort wird mit AES und einer eigenen Schlüsseldatei verschlüsselt.
+- **Nachweis-Bericht für Anbieter / Bundesnetzagentur** über 24 Stunden, 7, 30 und
+  90 Tage, über alle Messungen hinweg. Er enthält:
+  - Messabdeckung und Verfügbarkeit der Anbieterstrecke.
+  - Störungen, die dem Anbieter zuzuordnen sind: Anzahl, Dauer, längste Störung,
+    betroffene Tage, Dauerverteilung.
+  - Paketverlust je Abschnitt und Latenz (P50/P95/P99).
+  - Stunden- bzw. Tagestabellen mit Diagramm und eine vollständige Störungsliste
+    mit Leitungswerten.
+  - Messverfahren, Hinweise zu § 57/§ 58 TKG und eine Prüfsumme.
+  - Vertrags- und Ticketdaten, einzutragen unter ⚙ → „Vertrag & Nachweis“.
+- **Export/Import (.pof):** Eine komplette Messung als prüfsummengesichertes ZIP
+  exportieren und auf jedem anderen proof-of-fault (Windows ↔ Linux) importieren
+  und auswerten.
+- Das Live-Diagramm füllt sich beim Öffnen mit den letzten 90 Minuten, auch wenn
+  vorher kein Browser offen war. Mehrere Browser gleichzeitig sind möglich.
+- Exporte und FRITZ!Box-Debug werden jetzt als Download im Browser gespeichert.
+
 ## v0.20.2 – 2026-10-07
 
 - Anbieter-/Heimnetz-Messpunkt, der beim Routen-Ermitteln nicht auf Ping

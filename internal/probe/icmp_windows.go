@@ -56,7 +56,6 @@ type icmpEchoReply struct {
 	Options       ipOptionInformation
 }
 
-var payload = []byte("proof-of-fault--probe-payload-32")
 
 type windowsProber struct{}
 

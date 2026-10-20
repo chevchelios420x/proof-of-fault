@@ -72,6 +72,15 @@ func Capture(dst netip.Addr) Snapshot {
 	}
 	s.Gateways = parseGateways(s.Routes)
 	s.DNS = parseDNS(s.IPConfig)
+	if len(s.DNS) == 0 && runtime.GOOS == "linux" {
+		// systemd-resolved: resolv.conf only names the local stub 127.0.0.53.
+		if out := run([]string{"resolvectl", "dns"}); !strings.HasPrefix(out, "(") {
+			s.IPConfig += "\n\n# resolvectl dns\n" + out
+			for _, ip := range ipv4.FindAllString(out, -1) {
+				s.DNS = appendNew(s.DNS, ip)
+			}
+		}
+	}
 	if len(s.DNS) == 0 {
 		if b, err := os.ReadFile("/etc/resolv.conf"); err == nil {
 			for _, l := range strings.Split(string(b), "\n") {
@@ -152,4 +161,13 @@ func parseDNS(ipconfig string) []string {
 		}
 	}
 	return out
+}
+
+func appendNew(list []string, v string) []string {
+	for _, x := range list {
+		if x == v {
+			return list
+		}
+	}
+	return append(list, v)
 }

@@ -7,8 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Allow unprivileged ping (Linux)
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
+      - name: Test
+        run: go test ./internal/...
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -17,14 +34,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Test
-        run: go test ./internal/...
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
       - name: Build
-        shell: bash
         run: scripts/build-windows.sh
+      - name: Vet
+        run: go vet ./... && GOOS=windows go vet ./...
       - uses: actions/upload-artifact@v4
         with:
-          name: proof-of-fault-windows-amd64
-          path: build/bin/proof-of-fault-v*.exe
+          name: proof-of-fault
+          path: |
+            build/bin/proof-of-fault-v*.exe
+            build/bin/proof-of-fault-v*-linux-amd64

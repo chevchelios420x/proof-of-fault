@@ -64,6 +64,19 @@ type Settings struct {
 	// (FRITZ!Box cable data); the others are prepared.
 	Access string `json:"access"`
 	Fritz  Fritz  `json:"fritz"`
+
+	// Contract data printed in the report for provider / Bundesnetzagentur.
+	Contract Contract `json:"contract"`
+}
+
+// Contract describes the internet contract (all optional, free text).
+type Contract struct {
+	Name       string `json:"name"`       // contract holder
+	Address    string `json:"address"`    // connection address
+	Provider   string `json:"provider"`   // e.g. Vodafone
+	CustomerNo string `json:"customerNo"` // customer / contract number
+	Tariff     string `json:"tariff"`     // product and agreed speed
+	Tickets    string `json:"tickets"`    // fault reports: date, ticket number, answer
 }
 
 // Fritz holds the FRITZ!Box access for line diagnostics.

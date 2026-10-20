@@ -1,5 +1,6 @@
 // Package secret protects stored credentials. On Windows it uses DPAPI
-// (bound to the Windows user account); elsewhere values are only encoded.
+// (bound to the Windows user account), elsewhere AES-GCM with a per-user key
+// file. The prefix "dpapi:" is kept for both.
 package secret
 
 import (
